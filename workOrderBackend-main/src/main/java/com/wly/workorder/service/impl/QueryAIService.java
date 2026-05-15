@@ -3,6 +3,14 @@ package com.wly.workorder.service.impl;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wly.workorder.config.WorkOrderAIProperties;
+import com.wly.workorder.model.KnowledgeModels.KnowledgeAnswer;
+import com.wly.workorder.model.KnowledgeModels.KnowledgeDocument;
+import com.wly.workorder.model.KnowledgeModels.KnowledgeDocumentList;
+import com.wly.workorder.model.KnowledgeModels.SourceDocument;
+import com.wly.workorder.model.TicketModels.WorkOrder;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -12,11 +20,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
-import com.wly.workorder.model.TicketModels.WorkOrder;
+import org.springframework.web.client.HttpStatusCodeException;
+import org.springframework.web.multipart.MultipartFile;
 
 @Component
 public class QueryAIService {
@@ -123,6 +134,86 @@ public class QueryAIService {
     }
   }
 
+  public KnowledgeAnswer askKnowledge(String question) {
+    if (!properties.getKnowledgeBase().isEnabled()) {
+      return null;
+    }
+    try {
+      JsonNode body = callAI("/ai/knowledge/qa", Map.of("question", question)).getBody();
+      return body == null ? null : KnowledgeAnswer.builder()
+        .answer(body.path("answer").asText())
+        .sourceDocuments(mapSourceDocuments(body.path("source_documents")))
+        .build();
+    } catch (Exception e) {
+      log.error("知识库问答失败", e);
+      return null;
+    }
+  }
+
+  public KnowledgeDocumentList listKnowledgeDocuments() {
+    if (!properties.getKnowledgeBase().isEnabled()) {
+      return null;
+    }
+    try {
+      JsonNode body = callAIGet("/ai/knowledge/documents").getBody();
+      if (body == null) {
+        return null;
+      }
+      List<KnowledgeDocument> items = new ArrayList<>();
+      for (JsonNode item : body.path("items")) {
+        items.add(mapKnowledgeDocument(item));
+      }
+      return KnowledgeDocumentList.builder()
+        .total(body.path("total").asLong(items.size()))
+        .items(items)
+        .build();
+    } catch (Exception e) {
+      log.error("知识库文档列表查询失败", e);
+      return null;
+    }
+  }
+
+  public KnowledgeDocument uploadKnowledgeDocument(MultipartFile file, String createdBy) throws IOException {
+    if (!properties.getKnowledgeBase().isEnabled()) {
+      return null;
+    }
+    try {
+      JsonNode body = callAI(
+        "/ai/knowledge/documents/upload",
+        Map.of(
+          "file_name", file.getOriginalFilename() == null ? "knowledge.txt" : file.getOriginalFilename(),
+          "content_type", file.getContentType() == null ? "" : file.getContentType(),
+          "content_base64", Base64.getEncoder().encodeToString(file.getBytes()),
+          "created_by", createdBy
+        )
+      ).getBody();
+      return body == null ? null : mapKnowledgeDocument(body);
+    } catch (HttpStatusCodeException e) {
+      throw new IllegalArgumentException(extractAiErrorMessage(e));
+    } catch (Exception e) {
+      log.error("知识库文档上传失败", e);
+      return null;
+    }
+  }
+
+  public boolean deleteKnowledgeDocument(String documentId) {
+    if (!properties.getKnowledgeBase().isEnabled()) {
+      return false;
+    }
+    try {
+      JsonNode body = callAIDelete("/ai/knowledge/documents/" + documentId).getBody();
+      return body != null && body.path("deleted").asBoolean(false);
+    } catch (HttpStatusCodeException e) {
+      if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
+        return false;
+      }
+      throw new IllegalStateException("knowledge document delete failed");
+    } catch (Exception e) {
+      log.error("知识库文档删除失败, documentId: {}", documentId, e);
+      throw new IllegalStateException("knowledge document delete failed");
+    }
+  }
+
   public ResponseEntity<JsonNode> callAI(String path, Object requestBody) {
     String url = properties.getAiService().getBaseUrl() + path;
     HttpHeaders headers = new HttpHeaders();
@@ -152,6 +243,16 @@ public class QueryAIService {
     throw new RuntimeException("AI服务调用失败，已重试" + maxRetries + "次", lastException);
   }
 
+  private ResponseEntity<JsonNode> callAIGet(String path) {
+    String url = properties.getAiService().getBaseUrl() + path;
+    return restTemplate.getForEntity(url, JsonNode.class);
+  }
+
+  private ResponseEntity<JsonNode> callAIDelete(String path) {
+    String url = properties.getAiService().getBaseUrl() + path;
+    return restTemplate.exchange(url, HttpMethod.DELETE, HttpEntity.EMPTY, JsonNode.class);
+  }
+
   private Map<String, Object> buildClassificationRequest(String ticketId, String title, String description, List<Map<String, String>> replies, boolean updateCategory) {
     return Map.of(
       "ticket_id", ticketId,
@@ -160,5 +261,40 @@ public class QueryAIService {
       "replies", replies,
       "update_category", updateCategory
     );
+  }
+
+  private List<SourceDocument> mapSourceDocuments(JsonNode sourceNodes) {
+    List<SourceDocument> sources = new ArrayList<>();
+    for (JsonNode item : sourceNodes) {
+      sources.add(SourceDocument.builder()
+        .id(item.path("id").asText())
+        .title(item.path("title").asText())
+        .relevanceScore(item.path("relevance_score").asDouble())
+        .build());
+    }
+    return sources;
+  }
+
+  private KnowledgeDocument mapKnowledgeDocument(JsonNode item) {
+    return KnowledgeDocument.builder()
+      .id(item.path("id").asText())
+      .title(item.path("title").asText())
+      .fileName(item.path("file_name").asText())
+      .fileExt(item.path("file_ext").asText())
+      .fileSize(item.path("file_size").asLong())
+      .createdBy(item.path("created_by").asText())
+      .status(item.path("status").asText())
+      .createdAt(item.path("created_at").asText())
+      .build();
+  }
+
+  private String extractAiErrorMessage(HttpStatusCodeException exception) {
+    try {
+      JsonNode body = objectMapper.readTree(exception.getResponseBodyAsString());
+      String detail = body.path("detail").asText();
+      return detail == null || detail.isBlank() ? "knowledge document upload failed" : detail;
+    } catch (Exception ignored) {
+      return "knowledge document upload failed";
+    }
   }
 }

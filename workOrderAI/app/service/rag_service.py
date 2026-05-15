@@ -1,4 +1,5 @@
 import asyncio
+import os
 from langchain_core import runnables
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
@@ -147,29 +148,30 @@ class RagService:
                 hypothetical_doc = await self.generate_hypothetical_document(query, self.question_hyde_chain)
                 documents = await self.retrieve_document(hypothetical_doc)
             elif pre_type == 'Fault_Statement':
-                hypothetical_doc = await self.generate_hypothetical_document(query, self.fault_statement_hyde_chain)
+                hypothetical_doc = await self.generate_hypothetical_document(query, self.statement_hyde_chain)
                 documents = await self.retrieve_document(hypothetical_doc)
-            elif pre_type == 'arrative_Keyword':
+            elif pre_type == 'Narrative_Keyword':
                 documents = await self.retrieve_document(query)
             else:
                 return {
                     "documents": [],
+                    "source_documents": [],
                     "summary": "您好，请描述您遇到的扫地机故障，我会尽力帮您解决。"
             }
 
-            # 提取文档内容列表
-            document_contents = [doc.page_content for doc in documents]
-
             # 对文档进行重排序
             # reordered_documents = await self.reorder_documents(query, document_contents)
-            reordered_documents = document_contents
+            reordered_documents = documents
 
             # 如果没有检索到文档
             if not reordered_documents:
                 return {
                     "documents": [],
+                    "source_documents": [],
                     "summary": "抱歉，我没有找到相关的信息。"
                 }
+
+            source_documents = self._build_source_documents(reordered_documents)
 
             # 使用分批总结策略
             try:
@@ -181,7 +183,7 @@ class RagService:
                 async def summarize_document(i, doc):
                     logger.info(f"【RAG】正在总结第{i}个文档")
                     # 为单个文档构建上下文
-                    single_context = f"【参考资料{i}】:{doc}\n"
+                    single_context = f"【参考资料{i}】:{doc.page_content}\n"
                     # 生成单个文档的摘要
                     import time
                     start_time = time.time()
@@ -209,7 +211,8 @@ class RagService:
                 if len(individual_summaries) == 1:
                     logger.info(f"【RAG】生成摘要成功")
                     return {
-                        "documents": reordered_documents,
+                        "documents": [doc.page_content for doc in reordered_documents],
+                        "source_documents": source_documents,
                         "summary": individual_summaries[0]
                     }
 
@@ -228,19 +231,22 @@ class RagService:
                 
                 logger.info(f"【RAG】生成摘要成功")
                 return {
-                    "documents": reordered_documents,
+                    "documents": [doc.page_content for doc in reordered_documents],
+                    "source_documents": source_documents,
                     "summary": final_summary
                 }
             except asyncio.TimeoutError:
                 logger.error(f"【RAG】生成摘要超时")
                 return {
-                    "documents": reordered_documents,
+                    "documents": [doc.page_content for doc in reordered_documents],
+                    "source_documents": source_documents,
                     "summary": "抱歉，生成摘要超时，请稍后再试。"
                 }
         except Exception as e:
             logger.error(f"【RAG】生成摘要失败: {e}", exc_info=True)
             return {
                 "documents": [],
+                "source_documents": [],
                 "summary": "抱歉，处理您的请求时出现了错误。"
             }
 
@@ -249,6 +255,44 @@ class RagService:
         """RAG 摘要"""
         result = await self.get_documents_and_summary(query)
         return result.get("summary", "抱歉，处理您的请求时出现了错误。")
+
+    async def rag_qa(self, query: str) -> dict:
+        """RAG 问答，返回答案和引用来源。"""
+        result = await self.get_documents_and_summary(query)
+        return {
+            "answer": result.get("summary", "抱歉，处理您的请求时出现了错误。"),
+            "source_documents": result.get("source_documents", []),
+        }
+
+    def _build_source_documents(self, documents: list) -> list[dict]:
+        sources = []
+        seen = set()
+        for index, doc in enumerate(documents):
+            metadata = doc.metadata or {}
+            source = metadata.get("source") or ""
+            document_id = metadata.get("document_id") or self._document_id_from_source(source)
+            title = metadata.get("title") or self._title_from_source(source)
+            key = document_id or title
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            sources.append(
+                {
+                    "id": document_id or key,
+                    "title": title or "知识库文档",
+                    "relevance_score": max(0.0, 1.0 - index * 0.1),
+                }
+            )
+        return sources
+
+    def _document_id_from_source(self, source: str) -> str:
+        base_name = os.path.basename(source or "")
+        return base_name.split("__", 1)[0] if "__" in base_name else base_name
+
+    def _title_from_source(self, source: str) -> str:
+        base_name = os.path.basename(source or "")
+        display_name = base_name.split("__", 1)[1] if "__" in base_name else base_name
+        return os.path.splitext(display_name)[0] or "知识库文档"
 
 if __name__ == '__main__':
     import asyncio

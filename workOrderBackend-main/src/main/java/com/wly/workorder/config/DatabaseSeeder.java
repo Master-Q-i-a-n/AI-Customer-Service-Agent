@@ -36,6 +36,7 @@ public class DatabaseSeeder implements CommandLineRunner {
     ensureCategoryColumn();
     ensurePriorityColumn();
     ensureEmotionColumn();
+    ensureKnowledgeDocumentTable();
 
     Integer userCount = jdbcTemplate.queryForObject("select count(*) from wo_user", Integer.class);
     if (userCount == null || userCount == 0) {
@@ -204,6 +205,26 @@ public class DatabaseSeeder implements CommandLineRunner {
       }
       return null;
     });
+  }
+
+  private void ensureKnowledgeDocumentTable() {
+    jdbcTemplate.execute(
+      """
+      create table if not exists wo_knowledge_document (
+        id varchar(36) primary key,
+        title varchar(255) not null,
+        file_name varchar(255) not null,
+        file_ext varchar(32) not null,
+        file_size bigint not null,
+        content_md5 varchar(32) not null unique,
+        storage_path varchar(500) not null,
+        created_by varchar(64) not null,
+        status varchar(32) not null,
+        created_at varchar(19) not null,
+        updated_at varchar(19) not null
+      )
+      """
+    );
   }
 
   private static String now() {

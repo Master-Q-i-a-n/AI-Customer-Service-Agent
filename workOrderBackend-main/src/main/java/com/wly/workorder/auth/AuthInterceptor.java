@@ -35,6 +35,10 @@ public class AuthInterceptor implements HandlerInterceptor {
         writeError(response, ApiResponse.withCode(403, "forbidden", null));
         return false;
       }
+      if (path.startsWith("/api/knowledge/documents") && session.getRole() != AuthRole.ADMIN) {
+        writeError(response, ApiResponse.withCode(403, "forbidden", null));
+        return false;
+      }
       if (path.startsWith("/api/feedback") && session.getRole() != AuthRole.USER && session.getRole() != AuthRole.ADMIN) {
         writeError(response, ApiResponse.withCode(403, "forbidden", null));
         return false;

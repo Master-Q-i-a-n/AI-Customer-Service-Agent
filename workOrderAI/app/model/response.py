@@ -77,10 +77,10 @@ class KnowledgeResponse(BaseModel):
     """知识库文档响应"""
     id: str                                             # 文档ID
     title: str                                          # 文档标题
-    content: str                                        # 文档内容
-    category: Optional[str] = None                      # 分类
-    tags: List[str] = []                                # 标签列表
-    author_id: str                                      # 创建者
+    file_name: str                                      # 原始文件名
+    file_ext: str                                       # 文件扩展名
+    file_size: int                                      # 文件大小
+    created_by: str                                     # 创建者
     status: str                                         # 状态: active/archived/draft
     created_at: str                                     # 创建时间
 

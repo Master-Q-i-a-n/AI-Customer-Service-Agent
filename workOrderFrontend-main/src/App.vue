@@ -13,6 +13,7 @@
 
       <nav class="nav">
         <RouterLink class="nav__item" to="/dashboard">首页</RouterLink>
+        <RouterLink class="nav__item" to="/knowledge">知识问答</RouterLink>
         <RouterLink class="nav__item" to="/feedback" v-if="isUser">我的反馈</RouterLink>
         <RouterLink class="nav__item" to="/work-order" v-if="isAdmin">工单管理</RouterLink>
       </nav>
@@ -76,6 +77,7 @@ const roleLabel = computed(() => ({
 
 const sectionTitleMap = {
   '/dashboard': '概览',
+  '/knowledge': '知识问答',
   '/feedback': '我的反馈',
   '/work-order': '工单管理',
   '/profile': '个人中心'
@@ -83,6 +85,7 @@ const sectionTitleMap = {
 
 const sectionLabelMap = {
   '/dashboard': '主页',
+  '/knowledge': '知识库',
   '/feedback': '用户侧',
   '/work-order': '管理侧',
   '/profile': '账户设置'

@@ -89,3 +89,11 @@ class KnowledgeQueryRequest(BaseModel):
 class KnowledgeQARequest(BaseModel):
     """知识库问答请求"""
     question: str                                       # 用户问题
+
+
+class KnowledgeUploadRequest(BaseModel):
+    """知识库文档上传请求"""
+    file_name: str                                      # 原始文件名
+    content_type: Optional[str] = None                  # MIME 类型
+    content_base64: str                                 # 文件内容 base64
+    created_by: str                                     # 上传人

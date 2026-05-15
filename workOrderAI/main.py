@@ -1,9 +1,10 @@
-from workOrderAI.app.api import classify, reply_suggest
+from workOrderAI.app.api import classify, knowledge, reply_suggest
 from fastapi import FastAPI
 from workOrderAI.utils.config import config
 
 app = FastAPI()
 app.include_router(classify.api)
+app.include_router(knowledge.api)
 app.include_router(reply_suggest.api)
 
 @app.get("/health")

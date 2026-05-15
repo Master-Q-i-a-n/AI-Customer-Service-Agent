@@ -1,5 +1,6 @@
 import asyncio
 import os
+import tempfile
 import aiofiles
 from aiofiles import os as aio_os
 from workOrderAI.utils.logger_handler import logger
@@ -13,7 +14,7 @@ from workOrderAI.utils.text_spliter import AsyncTextSplitter
 from langchain_community.retrievers import BM25Retriever
 from langchain_classic.retrievers import EnsembleRetriever
 from langchain_core.documents import Document
-from workOrderAI.utils.file_handler import get_file_md5_hex, pdf_loader, txt_loader
+from workOrderAI.utils.file_handler import get_file_md5_hex, markdown_loader, pdf_loader, ppt_loader, txt_loader, word_loader
 
 class VectorStoreService:
     def __init__(self):
@@ -156,14 +157,22 @@ class VectorStoreService:
         """
         try:
             # 使用同步操作删除文档
-            await asyncio.to_thread(
-                self.vectors_store.delete, 
-                where={"user_id": user_id}
-            )
+            await self._delete_by_metadata({"user_id": user_id})
             logger.info(f"【向量数据库】已删除用户 {user_id} 的所有文档")
         except Exception as e:
             logger.error(f"【向量数据库】删除用户 {user_id} 的文档时出错: {e}")
             raise
+
+    async def delete_document(self, document_id: str):
+        """删除指定知识文档对应的全部向量分块。"""
+        await self._delete_by_metadata({"document_id": document_id})
+        logger.info(f"【向量数据库】已删除知识文档 {document_id} 的全部向量")
+
+    async def _delete_by_metadata(self, where: dict):
+        matches = await asyncio.to_thread(self.vectors_store.get, where=where)
+        ids = matches.get("ids", [])
+        if ids:
+            await asyncio.to_thread(self.vectors_store.delete, ids=ids)
 
     async def get_file_document(self, read_path: str) -> list[Document]:
         """异步加载文件"""
@@ -274,6 +283,23 @@ class VectorStoreService:
                     except:
                         pass
                 continue
+
+    async def ingest_file(self, file_path: str, metadata: dict | None = None) -> int:
+        """将单个知识文件切分并写入向量库。"""
+        documents = await self.get_file_document(file_path)
+        if not documents:
+            return 0
+
+        split_documents = await self.spliter.split_documents(documents)
+        if not split_documents:
+            return 0
+
+        extra_metadata = metadata or {}
+        for doc in split_documents:
+            doc.metadata.update(extra_metadata)
+
+        await asyncio.to_thread(self.vectors_store.add_documents, split_documents)
+        return len(split_documents)
 
 
 if __name__ == '__main__':

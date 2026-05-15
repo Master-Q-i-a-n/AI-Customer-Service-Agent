@@ -1,7 +1,7 @@
 import os, hashlib, aiofiles, asyncio
 from workOrderAI.utils.logger_handler import logger
 from langchain_core.documents import Document
-from langchain_community.document_loaders import PyPDFLoader, TextLoader, UnstructuredMarkdownLoader, UnstructuredPowerPointLoader
+from langchain_community.document_loaders import Docx2txtLoader, PyPDFLoader, TextLoader, UnstructuredMarkdownLoader, UnstructuredPowerPointLoader
 from workOrderAI.utils.path_tool import get_abs_path
 
 
@@ -51,10 +51,11 @@ async def listdir_allowed_type(path: str, allowed_types: tuple[str]) -> list[str
         return []
     
     file_list = []
-    for f in await asyncio.to_thread(os.listdir, abs_path):
-        if f.endswith(allowed_types):
-            file_path = os.path.join(abs_path, f)
-            file_list.append(file_path)
+    for root, _, files in await asyncio.to_thread(lambda: list(os.walk(abs_path))):
+        for f in files:
+            if f.endswith(allowed_types):
+                file_path = os.path.join(root, f)
+                file_list.append(file_path)
 
     return file_list
 
@@ -102,7 +103,7 @@ async def word_loader(file_path: str) -> list[Document]:
     """
     abs_file_path = get_abs_path(file_path) if not os.path.isabs(file_path) else file_path
     try:
-        loader = TextLoader(abs_file_path, encoding='utf-8')
+        loader = Docx2txtLoader(abs_file_path)
         return await asyncio.to_thread(loader.load)
     except Exception as e:
         logger.error(f"【WORD文件加载】加载文件 {abs_file_path} 时出错: {e}")
@@ -120,4 +121,19 @@ async def markdown_loader(file_path: str) -> list[Document]:
         return await asyncio.to_thread(loader.load)
     except Exception as e:
         logger.error(f"【Markdown文件加载】加载文件 {abs_file_path} 时出错: {e}")
+        return []
+
+
+async def ppt_loader(file_path: str) -> list[Document]:
+    """
+    加载PPT文件内容
+    :param file_path: PPT文件路径
+    :return: PPT文件内容
+    """
+    abs_file_path = get_abs_path(file_path) if not os.path.isabs(file_path) else file_path
+    try:
+        loader = UnstructuredPowerPointLoader(abs_file_path, mode="single")
+        return await asyncio.to_thread(loader.load)
+    except Exception as e:
+        logger.error(f"【PPT文件加载】加载文件 {abs_file_path} 时出错: {e}")
         return []
