@@ -3,7 +3,7 @@ import { sessionState } from '../store/session'
 
 const request = axios.create({
   baseURL: import.meta.env.VITE_APP_BASE_API || '/api',
-  timeout: 15000
+  timeout: 60000
 })
 
 request.interceptors.request.use(config => {

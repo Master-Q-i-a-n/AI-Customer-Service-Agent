@@ -1,6 +1,7 @@
-from workOrderAI.utils.prompt_builder import REPLY_SUGGESTION_SYSTEM_PROMPT
+from workOrderAI.utils.prompt_builder import REPLY_SUGGESTION_AGENT_PROMPT
 from workOrderAI.models.factory import chat_model
 from workOrderAI.agent.agent import ReactAgent
+from workOrderAI.agent.agent_context import reset_current_username, set_current_username
 from workOrderAI.app.model.request import ReplySuggestRequest, ReplyMessage
 from workOrderAI.app.model.response import ReplySuggestResponse
 
@@ -8,7 +9,7 @@ from workOrderAI.app.model.response import ReplySuggestResponse
 
 class SuggestService:
     def __init__(self):
-        self.agent = ReactAgent(REPLY_SUGGESTION_SYSTEM_PROMPT)
+        self.agent = ReactAgent(REPLY_SUGGESTION_AGENT_PROMPT)
 
     async def get_suggestion(self, work_order: ReplySuggestRequest):
         """
@@ -19,7 +20,11 @@ class SuggestService:
         for reply in work_order.history:
             input += f'{reply.role}：{reply.content}\n'
 
-        suggestion_reply = await self.agent.execute_invoke(input)
+        token = set_current_username(work_order.owner_username)
+        try:
+            suggestion_reply = await self.agent.execute_invoke(input)
+        finally:
+            reset_current_username(token)
 
         return suggestion_reply
 

@@ -89,6 +89,7 @@ public class QueryAIService {
         "description", workorder.getDescription(),
         "category", workorder.getCategory(),
         "emotion", workorder.getEmotion(),
+        "owner_username", workorder.getOwnerUsername(),
         "history", workorder.getReplies()
       );
       ResponseEntity<JsonNode> response = callAI("/ai/suggestion", requestBody);

@@ -45,7 +45,7 @@ export const TICKET_PRIORITY_META = {
     label: '紧急',
     className: 'is-urgent'
   },
-  unknown: {
+  UNKNOWN: {
     label: '未知',
     className: 'is-low'
   }

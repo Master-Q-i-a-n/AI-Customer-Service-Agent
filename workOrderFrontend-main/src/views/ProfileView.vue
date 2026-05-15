@@ -84,20 +84,38 @@
           </el-form-item>
         </el-form>
       </section>
+
+      <section class="panel profile-card profile-card--danger">
+        <div class="profile-card__header">
+          <div>
+            <p class="page-header__eyebrow">账号注销</p>
+            <h3>删除当前账号</h3>
+            <div class="profile-card__meta">
+              注销后当前账号将无法再登录，历史反馈记录会保留在工单系统中。
+            </div>
+          </div>
+          <el-button :loading="accountDeleting" type="danger" plain @click="deleteCurrentAccount">
+            注销账号
+          </el-button>
+        </div>
+      </section>
     </div>
   </section>
 </template>
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
-import { getCurrentUser, updatePassword, updateProfile } from '../api/auth'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { useRouter } from 'vue-router'
+import { deleteAccount, getCurrentUser, updatePassword, updateProfile } from '../api/auth'
 import { uploadFile } from '../api/file'
-import { sessionState, updateSessionUser } from '../store/session'
+import { removeSession, sessionState, updateSessionUser } from '../store/session'
 
+const router = useRouter()
 const profileSaving = ref(false)
 const passwordSaving = ref(false)
 const avatarUploading = ref(false)
+const accountDeleting = ref(false)
 const avatarInputRef = ref(null)
 
 const form = reactive({
@@ -200,6 +218,34 @@ async function savePassword() {
     ElMessage.error(error.message || '更新密码失败')
   } finally {
     passwordSaving.value = false
+  }
+}
+
+async function deleteCurrentAccount() {
+  try {
+    await ElMessageBox.confirm(
+      '确认注销当前账号吗？注销后该账号将无法继续登录。',
+      '注销账号',
+      {
+        confirmButtonText: '确认注销',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+  } catch (error) {
+    return
+  }
+
+  accountDeleting.value = true
+  try {
+    await deleteAccount()
+    removeSession()
+    ElMessage.success('账号已注销')
+    await router.replace('/login')
+  } catch (error) {
+    ElMessage.error(error.message || '账号注销失败')
+  } finally {
+    accountDeleting.value = false
   }
 }
 

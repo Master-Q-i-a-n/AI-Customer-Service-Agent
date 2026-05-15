@@ -20,7 +20,7 @@ async def get_suggestion(request: ReplySuggestRequest):
         return ReplySuggestResponse(suggested_reply=suggestion)
 
     except Exception as e:
-        logger.error(f"建议服务调用失败: {e}")
+        logger.error(f"建议服务调用失败: {e}", exc_info=True)
 
 
 

@@ -20,12 +20,8 @@ class ClassifyService:
         获取工单分类
         """
         input = f'标题：{work_order.title}\n内容：{work_order.description}\n'
-        if work_order.category:
-            input += f'分类：{work_order.category}\n'
-        if work_order.emotion:
-            input += f'情感：{work_order.emotion}\n'
         input += '用户(user)和客服(service)的对话记录：\n'
-        for reply in work_order.history:
+        for reply in work_order.replies:
             input += f'{reply.role}：{reply.content}\n'
         return self.chain.invoke(
             {

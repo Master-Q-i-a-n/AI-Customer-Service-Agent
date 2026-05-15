@@ -20,6 +20,39 @@ public class DefaultAuthService implements AuthService {
   }
 
   @Override
+  public LoginResponse register(RegisterRequest request) {
+    String username = request.getUsername().trim();
+    String displayName = request.getDisplayName().trim();
+    String avatarUrl = request.getAvatarUrl() == null ? "" : request.getAvatarUrl().trim();
+
+    Integer exists = jdbcTemplate.queryForObject(
+      "select count(*) from wo_user where username = ?",
+      Integer.class,
+      username
+    );
+    if (exists != null && exists > 0) {
+      throw new AuthException(ApiResponse.withCode(400, "username already exists", null));
+    }
+
+    String now = now();
+    jdbcTemplate.update(
+      "insert into wo_user (id, username, password, display_name, avatar_url, role, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
+      "user-" + UUID.randomUUID().toString().substring(0, 8),
+      username,
+      request.getPassword(),
+      displayName,
+      avatarUrl,
+      request.getRole().name(),
+      now,
+      now
+    );
+
+    AuthSession session = new AuthSession(UUID.randomUUID().toString(), username, displayName, avatarUrl, request.getRole());
+    sessions.put(session.getToken(), session);
+    return new LoginResponse(session.getToken(), toProfile(session));
+  }
+
+  @Override
   public LoginResponse login(LoginRequest request) {
     AuthUser user = jdbcTemplate.query(
       "select username, password, display_name, avatar_url, role from wo_user where username = ?",
@@ -117,6 +150,17 @@ public class DefaultAuthService implements AuthService {
       session.getUsername()
     );
     return me();
+  }
+
+  @Override
+  public void deleteAccount() {
+    AuthSession session = requireSession();
+    String username = session.getUsername();
+    int deleted = jdbcTemplate.update("delete from wo_user where username = ?", username);
+    if (deleted == 0) {
+      throw new AuthException(ApiResponse.withCode(404, "account not found", null));
+    }
+    sessions.entrySet().removeIf(entry -> username.equals(entry.getValue().getUsername()));
   }
 
   @Override

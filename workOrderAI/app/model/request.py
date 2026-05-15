@@ -61,6 +61,7 @@ class ReplySuggestRequest(BaseModel):
     description: str                             # 工单描述
     category: Optional[str] = None               # 分类: 技术文档/常见问题/操作指南/产品说明
     emotion: Optional[str] = None                # 情感: 正常/情感化
+    owner_username: Optional[str] = None
     history: List[ReplyMessage]                  # 对话历史
 
 

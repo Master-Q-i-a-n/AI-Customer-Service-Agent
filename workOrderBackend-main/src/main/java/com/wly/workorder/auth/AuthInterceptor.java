@@ -22,7 +22,7 @@ public class AuthInterceptor implements HandlerInterceptor {
   @Override
   public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
     String path = request.getRequestURI();
-    if (path.equals("/api/health") || path.equals("/api/auth/login") || path.equals("/api/auth/me") || path.startsWith("/api/auth/demo-account/") || path.startsWith("/actuator")) {
+    if (path.equals("/api/health") || path.equals("/api/auth/register") || path.equals("/api/auth/login") || path.equals("/api/auth/me") || path.startsWith("/api/auth/demo-account/") || path.startsWith("/actuator")) {
       return true;
     }
     if (path.startsWith("/api/files/") && "GET".equalsIgnoreCase(request.getMethod())) {

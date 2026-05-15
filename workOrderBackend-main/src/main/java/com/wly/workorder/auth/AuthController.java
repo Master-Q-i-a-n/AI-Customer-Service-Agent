@@ -3,6 +3,7 @@ package com.wly.workorder.auth;
 import com.wly.workorder.common.ApiResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -18,6 +19,11 @@ public class AuthController {
 
   public AuthController(DefaultAuthService authService) {
     this.authService = authService;
+  }
+
+  @PostMapping("/register")
+  public ApiResponse<LoginResponse> register(@RequestBody @Valid RegisterRequest request) {
+    return ApiResponse.success(authService.register(request));
   }
 
   @PostMapping("/login")
@@ -43,6 +49,12 @@ public class AuthController {
   @PutMapping("/password")
   public ApiResponse<UserProfile> updatePassword(@RequestBody @Valid UpdatePasswordRequest request) {
     return ApiResponse.success(authService.updatePassword(request));
+  }
+
+  @DeleteMapping("/account")
+  public ApiResponse<Void> deleteAccount() {
+    authService.deleteAccount();
+    return ApiResponse.success("account deleted", null);
   }
 
   @PostMapping("/logout")

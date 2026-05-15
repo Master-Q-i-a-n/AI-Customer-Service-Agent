@@ -31,7 +31,7 @@ class ChatModelFactory(BaseModelFactory):
         """生成模型"""
         return ChatTongyi(
             model=config['model']['chat_model'],
-            streaming=True,
+            streaming=False,
             top_p=0.7,
         )
 

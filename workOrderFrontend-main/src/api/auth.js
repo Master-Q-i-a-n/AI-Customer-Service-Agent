@@ -8,6 +8,14 @@ export function login(data) {
   })
 }
 
+export function register(data) {
+  return request({
+    url: '/auth/register',
+    method: 'post',
+    data
+  })
+}
+
 export function getCurrentUser() {
   return request({
     url: '/auth/me',
@@ -42,5 +50,12 @@ export function updatePassword(data) {
     url: '/auth/password',
     method: 'put',
     data
+  })
+}
+
+export function deleteAccount() {
+  return request({
+    url: '/auth/account',
+    method: 'delete'
   })
 }
