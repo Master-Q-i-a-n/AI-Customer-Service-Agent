@@ -21,4 +21,6 @@ public interface TicketService {
   WorkOrder queryWorkOrderById(String id);
 
   AISuggestion getSuggestion(String id);
+
+  WorkOrder refreshWorkOrderAnalysis(String id);
 }

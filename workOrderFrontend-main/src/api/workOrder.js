@@ -45,3 +45,10 @@ export function getSuggestion(id){
     method: 'get'
   })
 }
+
+export function refreshWorkOrderAnalysis(id) {
+  return request({
+    url: `/work-order/${id}/analysis/refresh`,
+    method: 'post'
+  })
+}

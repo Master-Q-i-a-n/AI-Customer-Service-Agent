@@ -76,7 +76,7 @@ public class JdbcTicketService implements TicketService {
       defaultString(request.getAccountName(), session.getDisplayName()), "", imagesJson, attachmentsJson, now, now
     );
 
-    queryAIService.classifyTicketAsync(id, request.getTitle(), request.getDescription(), List.of());
+    queryAIService.classifyTicketAsync(id, request.getTitle(), request.getDescription(), List.of(), true);
 
     return getFeedbackById(id);
   }
@@ -120,7 +120,18 @@ public class JdbcTicketService implements TicketService {
       jdbcTemplate.update("update wo_feedback set updated_at = ? where id = ?", now, id);
     }
 
-    return getFeedbackById(id);
+    WorkOrder updatedWorkOrder = queryWorkOrderById(id);
+    if (session.getRole() == AuthRole.USER && updatedWorkOrder != null) {
+      queryAIService.classifyTicketAsync(
+        updatedWorkOrder.getId(),
+        updatedWorkOrder.getTitle(),
+        updatedWorkOrder.getDescription(),
+        toReplyMessages(updatedWorkOrder.getReplies()),
+        false
+      );
+    }
+
+    return updatedWorkOrder == null ? null : mapFeedbackFromWorkorder(updatedWorkOrder);
   }
 
   @Override
@@ -281,6 +292,28 @@ public class JdbcTicketService implements TicketService {
     
   }
 
+  @Override
+  public WorkOrder refreshWorkOrderAnalysis(String id) {
+    AuthSession session = AuthContext.require();
+    if (session.getRole() != AuthRole.ADMIN) {
+      throw new IllegalStateException("Only admin can refresh work order analysis");
+    }
+
+    WorkOrder workOrder = queryWorkOrderById(id);
+    if (workOrder == null) {
+      return null;
+    }
+
+    JsonNode result = queryAIService.classifyTicket(
+      workOrder.getId(),
+      workOrder.getTitle(),
+      workOrder.getDescription(),
+      toReplyMessages(workOrder.getReplies()),
+      false
+    );
+    return result == null ? null : queryWorkOrderById(id);
+  }
+
   private WorkOrder mapWorkOrder(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
 
     return WorkOrder.builder()
@@ -319,6 +352,18 @@ public class JdbcTicketService implements TicketService {
       .updatedAt(fd.getUpdatedAt())
       .replies(fd.getReplies())
       .build();
+  }
+
+  private List<Map<String, String>> toReplyMessages(List<FeedbackReply> replies) {
+    if (replies == null || replies.isEmpty()) {
+      return List.of();
+    }
+    return replies.stream()
+      .map(reply -> Map.of(
+        "role", defaultString(reply.getRole(), "user"),
+        "content", defaultString(reply.getContent(), "")
+      ))
+      .collect(Collectors.toList());
   }
 
   private String writeJson(Object value) {

@@ -39,7 +39,16 @@ def classify_work_order(request: ClassifyRequest):
         conn = get_db_connection()
         with conn.cursor() as cursor:
             logger.info(f"准备更新数据库: id={request_id}, problem_type={problem_type}")
-            cursor.execute("UPDATE wo_feedback SET category = %s, priority = %s, emotion = %s WHERE id = %s", (problem_type, priority, user_sentiment, request_id))
+            if request.update_category:
+                cursor.execute(
+                    "UPDATE wo_feedback SET category = %s, priority = %s, emotion = %s WHERE id = %s",
+                    (problem_type, priority, user_sentiment, request_id),
+                )
+            else:
+                cursor.execute(
+                    "UPDATE wo_feedback SET priority = %s, emotion = %s WHERE id = %s",
+                    (priority, user_sentiment, request_id),
+                )
             if cursor.rowcount > 0:
                 logger.info(f"工单 {request_id} 已更新")
             else:

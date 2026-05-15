@@ -483,6 +483,14 @@ textarea {
   font-size: 22px;
 }
 
+.profile-card--danger {
+  border-color: rgba(245, 108, 108, 0.28);
+}
+
+.profile-card--danger h3 {
+  color: #c45656;
+}
+
 .profile-form {
   display: grid;
   gap: 4px;
@@ -569,6 +577,16 @@ textarea {
   justify-content: space-between;
   gap: 12px;
   margin-top: 12px;
+}
+
+.login-form__register {
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.register-form__role {
+  width: 100%;
 }
 
 @media (max-width: 960px) {

@@ -97,4 +97,10 @@ public class TicketController {
     Feedback feedback = ticketService.replyFeedback(id, request);
     return feedback == null ? ApiResponse.fail("feedback not found") : ApiResponse.success("replied", feedback);
   }
+
+  @PostMapping("/work-order/{id}/analysis/refresh")
+  public ApiResponse<WorkOrder> refreshWorkOrderAnalysis(@PathVariable String id) {
+    WorkOrder workOrder = ticketService.refreshWorkOrderAnalysis(id);
+    return workOrder == null ? ApiResponse.fail("refresh analysis failed") : ApiResponse.success("refreshed", workOrder);
+  }
 }

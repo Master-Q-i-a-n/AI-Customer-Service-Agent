@@ -21,6 +21,7 @@ class ClassifyRequest(BaseModel):
     title: str                                          # 工单标题
     description: str                                    # 工单描述
     replies: List[ReplyMessage] = []                    # 历史回复记录
+    update_category: bool = True                        # 是否更新分类；后续重算仅更新优先级和情绪
 
 
 # ==========================================

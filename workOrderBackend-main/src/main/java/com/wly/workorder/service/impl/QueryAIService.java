@@ -34,19 +34,13 @@ public class QueryAIService {
     this.objectMapper = objectMapper;
   }
 
-  public CompletableFuture<JsonNode> classifyTicketAsync(String ticketId, String title, String description, List<Map<String, String>> replies) {
-    if (!properties.getAiClassification().isEnabled() || !properties.getAiClassification().isTriggerOnCreate()) {
+  public CompletableFuture<JsonNode> classifyTicketAsync(String ticketId, String title, String description, List<Map<String, String>> replies, boolean updateCategory) {
+    if (!properties.getAiClassification().isEnabled() || (updateCategory && !properties.getAiClassification().isTriggerOnCreate())) {
       return CompletableFuture.completedFuture(null);
     }
     return CompletableFuture.supplyAsync(() -> {
       try {
-        Map<String, Object> requestBody = Map.of(
-          "ticket_id", ticketId,
-          "title", title,
-          "description", description,
-          "replies", replies
-        );
-        ResponseEntity<JsonNode> response = callAI("/ai/classify", requestBody);
+        ResponseEntity<JsonNode> response = callAI("/ai/classify", buildClassificationRequest(ticketId, title, description, replies, updateCategory));
         log.info("AI分类成功, ticketId: {}", ticketId);
         return response.getBody();
       } catch (Exception e) {
@@ -54,6 +48,20 @@ public class QueryAIService {
         return null;
       }
     }, asyncExecutor);
+  }
+
+  public JsonNode classifyTicket(String ticketId, String title, String description, List<Map<String, String>> replies, boolean updateCategory) {
+    if (!properties.getAiClassification().isEnabled()) {
+      return null;
+    }
+    try {
+      ResponseEntity<JsonNode> response = callAI("/ai/classify", buildClassificationRequest(ticketId, title, description, replies, updateCategory));
+      log.info("AI分类成功, ticketId: {}", ticketId);
+      return response.getBody();
+    } catch (Exception e) {
+      log.error("AI分类失败, ticketId: {}", ticketId, e);
+      return null;
+    }
   }
 
   public CompletableFuture<JsonNode> qualityCheckAsync(String replyId, String ticketId, Map<String, Object> ticketContext, String serviceReplyContent) {
@@ -142,5 +150,15 @@ public class QueryAIService {
       }
     }
     throw new RuntimeException("AI服务调用失败，已重试" + maxRetries + "次", lastException);
+  }
+
+  private Map<String, Object> buildClassificationRequest(String ticketId, String title, String description, List<Map<String, String>> replies, boolean updateCategory) {
+    return Map.of(
+      "ticket_id", ticketId,
+      "title", title,
+      "description", description,
+      "replies", replies,
+      "update_category", updateCategory
+    );
   }
 }

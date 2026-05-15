@@ -256,7 +256,13 @@
                   <span class="work-order-ai-analysis__header-icon"></span>
                   <span>AI 智能分析</span>
                 </div>
-                <el-button size="small" type="primary" class="work-order-ai-analysis__refresh">
+                <el-button
+                  size="small"
+                  type="primary"
+                  class="work-order-ai-analysis__refresh"
+                  :loading="analysisRefreshLoading"
+                  @click="refreshSelectedAnalysis"
+                >
                   刷新分析
                 </el-button>
               </div>
@@ -370,7 +376,15 @@ import {
 } from '@element-plus/icons-vue'
 import csReplyQuill from '../components/biz/csReplyQuill.vue'
 import request from '../api/http'
-import { getWorkOrderDetail, getWorkOrderSummary, pageWorkOrders, replyWorkOrder, updateWorkOrderStatus, getSuggestion } from '../api/workOrder'
+import {
+  getSuggestion,
+  getWorkOrderDetail,
+  getWorkOrderSummary,
+  pageWorkOrders,
+  refreshWorkOrderAnalysis,
+  replyWorkOrder,
+  updateWorkOrderStatus
+} from '../api/workOrder'
 import { sessionState } from '../store/session'
 import {
   buildReplyHtml,
@@ -394,6 +408,7 @@ const loading = ref(false)
 const detailLoading = ref(false)
 const replyLoading = ref(false)
 const aiReplyLoading = ref(false)
+const analysisRefreshLoading = ref(false)
 const workOrderList = ref([])
 const detailDialogVisible = ref(false)
 const selectedId = ref('')
@@ -699,6 +714,25 @@ async function generateAiReplySuggestion() {
     ElMessage.error(error.message || 'AI 回复建议生成失败')
   } finally {
     aiReplyLoading.value = false
+  }
+}
+
+async function refreshSelectedAnalysis() {
+  if (!selectedWorkOrder.value || analysisRefreshLoading.value) {
+    return
+  }
+
+  analysisRefreshLoading.value = true
+  try {
+    const currentId = selectedWorkOrder.value.id
+    await refreshWorkOrderAnalysis(currentId)
+    await loadWorkOrders()
+    await loadWorkOrderDetail(currentId)
+    ElMessage.success('AI 分析已刷新')
+  } catch (error) {
+    ElMessage.error(error.message || 'AI 分析刷新失败')
+  } finally {
+    analysisRefreshLoading.value = false
   }
 }
 

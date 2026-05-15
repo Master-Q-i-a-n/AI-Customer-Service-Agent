@@ -1,3 +1,20 @@
 梳理项目结构.md
 workOrderBackend-main/docs/superpowers/plans/2026-04-23-feedback-is-work-order.md
 workOrderBackend-main/src/main/resources/workorder-schema.sql
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Local AI data and logs
+workOrderAI/data/
+workOrderAI/logs/
+workOrderAI/try.py
+
+# Build outputs
+workOrderBackend-main/target/
+workOrderFrontend-main/dist/
+
+# Local IDE settings
+.idea/
+.vscode/
