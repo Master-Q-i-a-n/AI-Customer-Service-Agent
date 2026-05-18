@@ -66,6 +66,16 @@ class ReplySuggestRequest(BaseModel):
     history: List[ReplyMessage]                  # 对话历史
 
 
+class CaseMemoryUpsertRequest(BaseModel):
+    """历史工单案例沉淀请求"""
+    ticket_id: str
+    ticket_code: str
+    title: str
+    description: str
+    final_reply: str
+    status: str
+
+
 # ==========================================
 # 知识库管理请求模型
 # ==========================================

@@ -43,14 +43,18 @@ class VectorStoreService:
         _, bm25_retriever = await self._get_cached_base_retrievers()
         return bm25_retriever
 
+    async def _list_knowledge_file_paths(self) -> list[str]:
+        return await listdir_allowed_type(
+            config['vector_store']['data_path'],
+            tuple(config['vector_store']['allow_knowledge_file_types']),
+            tuple(config['vector_store'].get('knowledge_exclude_paths', [])),
+        )
+
     async def _build_bm25_retriever(self) -> BM25Retriever:
         """
         获取BM25检索器
         """
-        allowed_file_path = await listdir_allowed_type(
-            config['vector_store']['data_path'],
-            tuple(config['vector_store']['allow_knowledge_file_types'])
-        )
+        allowed_file_path = await self._list_knowledge_file_paths()
 
         all_docs = []
         for file_path in allowed_file_path:
@@ -137,22 +141,27 @@ class VectorStoreService:
         # 根据查询特征调整权重
         query_length = len(query)
         query_words = len(query.split())
+        has_chinese = any('\u4e00' <= char <= '\u9fff' for char in query)
         
         # 长查询（>50字符）更适合向量检索
         if query_length > 50:
             vector_weight = 0.7
             bm25_weight = 0.3
-        # 短查询（<20字符）更适合BM25检索
+        # 中文短查询优先向量检索，其他短查询仍保留 BM25 优势
         elif query_length < 20:
-            vector_weight = 0.3
-            bm25_weight = 0.7
+            if has_chinese:
+                vector_weight = 0.7
+                bm25_weight = 0.3
+            else:
+                vector_weight = 0.3
+                bm25_weight = 0.7
         # 中等长度查询使用默认权重
         else:
             vector_weight = default_vector_weight
             bm25_weight = default_bm25_weight
         
         # 关键词密集的查询（词数/长度比例高）更适合BM25
-        if query_words > 0:
+        if query_words > 0 and not (query_length < 20 and has_chinese):
             word_density = query_words / query_length
             if word_density > 0.1:
                 bm25_weight = min(bm25_weight + 0.1, 0.7)
@@ -244,10 +253,7 @@ class VectorStoreService:
                 file_paths.append(temp_file_path.name)
         else:
             # 从数据文件夹读取文件
-            allowed_file_path: list[str] = await listdir_allowed_type(
-                config['vector_store']['data_path'],
-                tuple(config['vector_store']['allow_knowledge_file_types'])
-            )
+            allowed_file_path: list[str] = await self._list_knowledge_file_paths()
             file_paths = allowed_file_path
 
         for file_path in file_paths:

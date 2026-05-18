@@ -336,6 +336,21 @@
                 @state-change="handleReplyEditorState"
               />
 
+              <div v-if="aiReplyCaseSources.length" class="work-order-composer__cases">
+                <div class="work-order-composer__cases-title">参考历史案例</div>
+                <div class="work-order-composer__cases-list">
+                  <div
+                    v-for="item in aiReplyCaseSources"
+                    :key="item.ticketId"
+                    class="work-order-composer__case"
+                  >
+                    <span class="work-order-composer__case-code">{{ item.ticketCode || item.ticketId }}</span>
+                    <span class="work-order-composer__case-title">{{ item.title || '--' }}</span>
+                    <span class="work-order-composer__case-score">相似度 {{ formatSimilarity(item.similarityScore) }}</span>
+                  </div>
+                </div>
+              </div>
+
               <div class="work-order-composer__actions">
                 <div class="work-order-composer__tools">
                 <span class="work-order-composer__tip">正文内容 {{ replyTextLength }}/500 字</span>
@@ -408,6 +423,7 @@ const loading = ref(false)
 const detailLoading = ref(false)
 const replyLoading = ref(false)
 const aiReplyLoading = ref(false)
+const aiReplyCaseSources = ref([])
 const analysisRefreshLoading = ref(false)
 const workOrderList = ref([])
 const detailDialogVisible = ref(false)
@@ -646,6 +662,7 @@ function resetReplyForm() {
   replyForm.content = ''
   replyTextLength.value = 0
   replyHasContent.value = false
+  aiReplyCaseSources.value = []
 }
 
 function renderReplyContent(content) {
@@ -700,6 +717,7 @@ async function generateAiReplySuggestion() {
   }
 
   aiReplyLoading.value = true
+  aiReplyCaseSources.value = []
   try {
     const res = await getSuggestion(selectedWorkOrder.value.id)
     const suggestion = res?.data?.suggestedReply
@@ -709,12 +727,21 @@ async function generateAiReplySuggestion() {
     }
 
     replyForm.content = buildReplyHtml(suggestion)
+    aiReplyCaseSources.value = Array.isArray(res?.data?.sourceTemplates) ? res.data.sourceTemplates : []
     ElMessage.success('AI 回复建议已生成')
   } catch (error) {
     ElMessage.error(error.message || 'AI 回复建议生成失败')
   } finally {
     aiReplyLoading.value = false
   }
+}
+
+function formatSimilarity(value) {
+  const score = Number(value)
+  if (!Number.isFinite(score)) {
+    return '--'
+  }
+  return `${Math.round(score * 100)}%`
 }
 
 async function refreshSelectedAnalysis() {
@@ -1193,6 +1220,52 @@ onMounted(async () => {
   margin-top: 14px;
 }
 
+.work-order-composer__cases {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid #dfe8f5;
+  border-radius: 10px;
+  background: #f7faff;
+}
+
+.work-order-composer__cases-title {
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #17325f;
+}
+
+.work-order-composer__cases-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.work-order-composer__case {
+  display: grid;
+  grid-template-columns: minmax(96px, auto) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.work-order-composer__case-code {
+  color: #2d66ea;
+  font-weight: 600;
+}
+
+.work-order-composer__case-title {
+  min-width: 0;
+  overflow: hidden;
+  color: #44536d;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-order-composer__case-score {
+  color: #7f8ba0;
+}
+
 .work-order-composer__actions {
   display: flex;
   align-items: flex-end;
@@ -1475,6 +1548,11 @@ onMounted(async () => {
   .work-order-composer__actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .work-order-composer__case {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 
   .work-order-toolbar__status,

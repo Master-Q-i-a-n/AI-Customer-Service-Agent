@@ -37,6 +37,7 @@ public class DatabaseSeeder implements CommandLineRunner {
     ensurePriorityColumn();
     ensureEmotionColumn();
     ensureKnowledgeDocumentTable();
+    ensureCaseMemoryTable();
 
     Integer userCount = jdbcTemplate.queryForObject("select count(*) from wo_user", Integer.class);
     if (userCount == null || userCount == 0) {
@@ -220,6 +221,25 @@ public class DatabaseSeeder implements CommandLineRunner {
         storage_path varchar(500) not null,
         created_by varchar(64) not null,
         status varchar(32) not null,
+        created_at varchar(19) not null,
+        updated_at varchar(19) not null
+      )
+      """
+    );
+  }
+
+  private void ensureCaseMemoryTable() {
+    jdbcTemplate.execute(
+      """
+      create table if not exists wo_case_memory (
+        id varchar(36) primary key,
+        ticket_id varchar(36) not null unique,
+        ticket_code varchar(32) not null,
+        title varchar(200) not null,
+        problem_text text not null,
+        final_reply text not null,
+        status varchar(32) not null,
+        vector_id varchar(36) not null unique,
         created_at varchar(19) not null,
         updated_at varchar(19) not null
       )

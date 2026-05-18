@@ -14,10 +14,10 @@ async def get_suggestion(request: ReplySuggestRequest):
     logger.info(f"建议服务调用，工单ID: {request.id}")
     try:
         suggest_service = SuggestService()
-        suggestion = await suggest_service.get_suggestion(request)
-        logger.debug(f"建议服务返回: {suggestion}")
-        
-        return ReplySuggestResponse(suggested_reply=suggestion)
+        suggestion = await suggest_service.get_suggestion_result(request)
+        logger.debug(f"建议服务返回: {suggestion.suggested_reply}")
+
+        return suggestion
 
     except Exception as e:
         logger.error(f"建议服务调用失败: {e}", exc_info=True)

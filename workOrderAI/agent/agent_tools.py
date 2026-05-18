@@ -6,6 +6,7 @@ from langchain_core.tools import tool
 
 from workOrderAI.agent.agent_context import get_current_username_value
 from workOrderAI.app.model.database import get_db_connection
+from workOrderAI.app.service.case_memory_service import CaseMemoryService
 from workOrderAI.app.service.rag_service import RagService
 from workOrderAI.utils.logger_handler import logger
 
@@ -175,6 +176,12 @@ def fetch_external_data(user_id: str, month: str = "") -> str:
     return _format_user_records(rows)
 
 
+@tool(description="Fetch similar solved or closed historical work order cases for the current problem.")
+async def fetch_similar_cases(query: str) -> str:
+    cases = await CaseMemoryService().search_similar_cases(query)
+    return json.dumps(cases, ensure_ascii=False)
+
+
 def get_tools():
     return [
         rag_summarize,
@@ -182,6 +189,7 @@ def get_tools():
         get_current_weather,
         get_current_username,
         fetch_external_data,
+        fetch_similar_cases,
     ]
 
 

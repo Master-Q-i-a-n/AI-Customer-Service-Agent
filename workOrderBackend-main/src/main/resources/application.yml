@@ -20,6 +20,10 @@ management:
       exposure:
         include: health,info
 
+logging:
+  charset:
+    console: UTF-8
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html

@@ -1,4 +1,6 @@
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.documents import Document
@@ -10,6 +12,7 @@ from workOrderAI.app.service.rag_service import (
     RagService,
 )
 from workOrderAI.utils.prompt_builder import QUESTION_HYDE_PROMPT, STATEMENT_HYDE_PROMPT
+from workOrderAI.utils.file_handler import listdir_allowed_type
 from workOrderAI.utils.vector_store import VectorStoreService
 
 
@@ -49,6 +52,51 @@ class VectorStoreCacheTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(VectorStoreService._cached_vector_retriever)
         self.assertIsNone(VectorStoreService._cached_bm25_retriever)
         self.assertFalse(VectorStoreService._retriever_cache_initialized)
+
+
+class KnowledgeFileSelectionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_listdir_allowed_type_skips_excluded_paths(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            root.joinpath("knowledge.txt").write_text("knowledge", encoding="utf-8")
+            root.joinpath("knowledge_docs").mkdir()
+            root.joinpath("knowledge_docs", "uploaded.txt").write_text("uploaded", encoding="utf-8")
+            root.joinpath("external").mkdir()
+            root.joinpath("external", "records.txt").write_text("records", encoding="utf-8")
+            root.joinpath("md5_hex_store").mkdir()
+            root.joinpath("md5_hex_store", "md5_hex_store.txt").write_text("hash", encoding="utf-8")
+
+            files = await listdir_allowed_type(
+                str(root),
+                ("txt",),
+                (str(root / "external"), str(root / "md5_hex_store")),
+            )
+
+            self.assertEqual(
+                {Path(file_path).name for file_path in files},
+                {"knowledge.txt", "uploaded.txt"},
+            )
+
+
+class DynamicWeightTests(unittest.IsolatedAsyncioTestCase):
+    async def test_short_chinese_query_prefers_vector_search(self):
+        self.assertEqual(
+            await VectorStoreService.get_dynamic_weights("扫地机器人如何保养"),
+            [0.7, 0.3],
+        )
+
+    async def test_short_english_query_still_prefers_bm25(self):
+        self.assertEqual(
+            await VectorStoreService.get_dynamic_weights("brush"),
+            [0.3, 0.7],
+        )
+
+    async def test_long_chinese_query_keeps_existing_vector_bias(self):
+        query = "扫地机器人长期使用后应该如何维护主刷边刷滤网拖布和水箱以保持清洁效果稳定" * 2
+        self.assertEqual(
+            await VectorStoreService.get_dynamic_weights(query),
+            [0.7, 0.3],
+        )
 
 
 class RagLightPathTests(unittest.IsolatedAsyncioTestCase):

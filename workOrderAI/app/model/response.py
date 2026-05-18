@@ -58,6 +58,9 @@ class SourceDocument(BaseModel):
 class SourceTemplate(BaseModel):
     """历史工单模板引用"""
     ticket_id: str                                      # 历史工单ID
+    ticket_code: str = ""                               # 历史工单编号
+    title: str = ""                                     # 历史工单标题
+    final_reply: str = ""                               # 历史工单最终客服回复
     similarity_score: float                             # 相似度分数
 
 
@@ -68,6 +71,7 @@ class ReplySuggestResponse(BaseModel):
     """AI智能回复建议响应"""
     suggested_reply: str                                # AI建议回复内容
     source_documents: List[SourceDocument] = []         # 引用知识库文档列表
+    source_templates: List[SourceTemplate] = []         # 引用历史案例列表
 
 
 # ==========================================

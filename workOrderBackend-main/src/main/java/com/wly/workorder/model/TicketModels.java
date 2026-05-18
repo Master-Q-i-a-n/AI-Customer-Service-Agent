@@ -130,9 +130,21 @@ public final class TicketModels {
   @Builder
   @NoArgsConstructor
   @AllArgsConstructor
+  public static class HistoricalCaseSource {
+    private String ticketId;
+    private String ticketCode;
+    private String title;
+    private String finalReply;
+    private double similarityScore;
+  }
+
+  @Data
+  @Builder
+  @NoArgsConstructor
+  @AllArgsConstructor
   public static class AISuggestion {
     private String suggestedReply;
-
+    private List<HistoricalCaseSource> sourceTemplates;
   }
 
   @Data

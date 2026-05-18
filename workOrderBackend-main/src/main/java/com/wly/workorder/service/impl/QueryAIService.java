@@ -8,6 +8,8 @@ import com.wly.workorder.model.KnowledgeModels.KnowledgeDocument;
 import com.wly.workorder.model.KnowledgeModels.KnowledgeDocumentList;
 import com.wly.workorder.model.KnowledgeModels.SourceDocument;
 import com.wly.workorder.model.TicketModels.WorkOrder;
+import com.wly.workorder.model.TicketModels.FeedbackReply;
+import com.wly.workorder.model.TicketModels.HistoricalCaseSource;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -118,6 +120,30 @@ public class QueryAIService {
       log.error("AI回复建议生成失败, ticketId: {}", workorder.getId(), e);
       return null;
     }
+  }
+
+  public CompletableFuture<Void> rememberCaseAsync(WorkOrder workorder, FeedbackReply finalServiceReply) {
+    if (workorder == null || finalServiceReply == null || finalServiceReply.getContent() == null || finalServiceReply.getContent().isBlank()) {
+      return CompletableFuture.completedFuture(null);
+    }
+    return CompletableFuture.runAsync(() -> {
+      try {
+        callAI(
+          "/ai/case-memory",
+          Map.of(
+            "ticket_id", workorder.getId(),
+            "ticket_code", workorder.getCode(),
+            "title", workorder.getTitle(),
+            "description", workorder.getDescription(),
+            "final_reply", finalServiceReply.getContent(),
+            "status", workorder.getStatus().name()
+          )
+        );
+        log.info("历史案例沉淀成功, ticketId: {}", workorder.getId());
+      } catch (Exception e) {
+        log.error("历史案例沉淀失败, ticketId: {}", workorder.getId(), e);
+      }
+    }, asyncExecutor);
   }
 
   public JsonNode knowledgeQA(String question) {
@@ -270,6 +296,20 @@ public class QueryAIService {
         .id(item.path("id").asText())
         .title(item.path("title").asText())
         .relevanceScore(item.path("relevance_score").asDouble())
+        .build());
+    }
+    return sources;
+  }
+
+  public List<HistoricalCaseSource> mapHistoricalCaseSources(JsonNode sourceNodes) {
+    List<HistoricalCaseSource> sources = new ArrayList<>();
+    for (JsonNode item : sourceNodes) {
+      sources.add(HistoricalCaseSource.builder()
+        .ticketId(item.path("ticket_id").asText())
+        .ticketCode(item.path("ticket_code").asText())
+        .title(item.path("title").asText())
+        .finalReply(item.path("final_reply").asText())
+        .similarityScore(item.path("similarity_score").asDouble())
         .build());
     }
     return sources;

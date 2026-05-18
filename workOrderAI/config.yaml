@@ -1,5 +1,5 @@
 model:
-  chat_model: qwen3-max
+  chat_model: qwen3-max-preview
   judge_model: qwen3-next-80b-a3b-instruct
   embedding_model: text-embedding-v4
   reranker_model: qwen3-rerank
@@ -22,8 +22,11 @@ FastAPI:
 vector_store:
   persist_directory: data/chroma_db
   data_path: data
+  knowledge_exclude_paths: ["data/md5_hex_store", "data/external", "data/chroma_db"]
   allow_knowledge_file_types: ["pdf", "docx", "txt"]
   collection_name: rag_collection
+  case_memory_collection_name: case_memory_collection
+  case_memory_min_score: 0.45
   chunk_size: 200
   chunk_overlap: 20
   k: 3

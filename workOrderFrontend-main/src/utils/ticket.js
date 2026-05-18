@@ -22,10 +22,10 @@ export const TICKET_STATUS_META = {
 }
 
 export const TICKET_STATUS_OPTIONS = [
-  { label: '待处理', value: '待处理' },
-  { label: '处理中', value: '处理中' },
-  { label: '已解决', value: '已解决' },
-  { label: '已关闭', value: '已关闭' }
+  { label: '待处理', value: 'PENDING' },
+  { label: '处理中', value: 'PROCESSING' },
+  { label: '已解决', value: 'SOLVED' },
+  { label: '已关闭', value: 'CLOSED' }
 ]
 
 export const TICKET_PRIORITY_META = {
@@ -142,6 +142,10 @@ export function buildReplyHtml(content) {
 export function mapTicketStatus(value) {
   const normalized = String(value || '').trim().toUpperCase()
   const alias = {
+    待处理: 'PENDING',
+    处理中: 'PROCESSING',
+    已解决: 'SOLVED',
+    已关闭: 'CLOSED',
     WAIT: 'PENDING',
     WAITING: 'PENDING',
     UNTREATED: 'PENDING',

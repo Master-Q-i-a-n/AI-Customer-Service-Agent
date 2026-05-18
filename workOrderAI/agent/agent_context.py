@@ -43,6 +43,10 @@ def get_tool_trace() -> list[dict]:
     return list(trace or [])
 
 
+def is_tool_trace_active() -> bool:
+    return _tool_trace.get() is not None
+
+
 def _normalize_tool_output(output: object) -> str:
     content = getattr(output, "content", output)
     if content is None:

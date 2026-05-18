@@ -187,7 +187,14 @@ public class JdbcTicketService implements TicketService {
       return null;
     }
 
-    return queryWorkOrderById(id);
+    WorkOrder updatedWorkOrder = queryWorkOrderById(id);
+    if (updatedWorkOrder != null && isCaseMemoryStatus(updatedWorkOrder.getStatus())) {
+      FeedbackReply finalServiceReply = findLastServiceReply(updatedWorkOrder.getReplies());
+      if (finalServiceReply != null) {
+        queryAIService.rememberCaseAsync(updatedWorkOrder, finalServiceReply);
+      }
+    }
+    return updatedWorkOrder;
   }
 
   private List<WorkOrder> queryWorkOrders(AuthSession session, String keyword, TicketCategory category, TicketPriority priority, TicketStatus status) {
@@ -282,10 +289,17 @@ public class JdbcTicketService implements TicketService {
       throw new IllegalStateException("Only admin can get suggestion!");
     }
     WorkOrder wd = queryWorkOrderById(id);
+    if (wd == null) {
+      return null;
+    }
     JsonNode node = queryAIService.suggestReply(wd);
+    if (node == null) {
+      return null;
+    }
 
     AISuggestion suggestion = AISuggestion.builder()
     .suggestedReply(node.path("suggested_reply").asText())
+    .sourceTemplates(queryAIService.mapHistoricalCaseSources(node.path("source_templates")))
     .build();
 
     return suggestion;
@@ -364,6 +378,23 @@ public class JdbcTicketService implements TicketService {
         "content", defaultString(reply.getContent(), "")
       ))
       .collect(Collectors.toList());
+  }
+
+  private boolean isCaseMemoryStatus(TicketStatus status) {
+    return status == TicketStatus.SOLVED || status == TicketStatus.CLOSED;
+  }
+
+  private FeedbackReply findLastServiceReply(List<FeedbackReply> replies) {
+    if (replies == null || replies.isEmpty()) {
+      return null;
+    }
+    for (int i = replies.size() - 1; i >= 0; i--) {
+      FeedbackReply reply = replies.get(i);
+      if ("service".equals(reply.getRole()) && reply.getContent() != null && !reply.getContent().isBlank()) {
+        return reply;
+      }
+    }
+    return null;
   }
 
   private String writeJson(Object value) {

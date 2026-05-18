@@ -32,11 +32,16 @@ async def get_file_md5_hex(file_path: str) -> str:
 
     return md5_object.hexdigest()
 
-async def listdir_allowed_type(path: str, allowed_types: tuple[str]) -> list[str]:
+async def listdir_allowed_type(
+    path: str,
+    allowed_types: tuple[str],
+    excluded_paths: tuple[str, ...] = (),
+) -> list[str]:
     """
     获取指定目录下所有允许的文件类型
     :param path: 目录路径
     :param allowed_types: 允许的文件类型列表
+    :param excluded_paths: 需要排除的目录路径列表
     :return: 符合条件的文件路径列表
     """
     # 处理路径，确保使用绝对路径
@@ -50,12 +55,28 @@ async def listdir_allowed_type(path: str, allowed_types: tuple[str]) -> list[str
         logger.error(f"【文件列表】目录路径 {abs_path} 不是目录")
         return []
     
+    excluded_abs_paths = tuple(
+        os.path.normcase(os.path.abspath(get_abs_path(excluded_path)))
+        for excluded_path in excluded_paths
+    )
+
+    def is_excluded(candidate_path: str) -> bool:
+        candidate_abs_path = os.path.normcase(os.path.abspath(candidate_path))
+        return any(
+            candidate_abs_path == excluded_path
+            or candidate_abs_path.startswith(excluded_path + os.sep)
+            for excluded_path in excluded_abs_paths
+        )
+
     file_list = []
     for root, _, files in await asyncio.to_thread(lambda: list(os.walk(abs_path))):
+        if is_excluded(root):
+            continue
         for f in files:
             if f.endswith(allowed_types):
                 file_path = os.path.join(root, f)
-                file_list.append(file_path)
+                if not is_excluded(file_path):
+                    file_list.append(file_path)
 
     return file_list
 

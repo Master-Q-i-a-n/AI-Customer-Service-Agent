@@ -23,7 +23,7 @@ def classify_work_order(request: ClassifyRequest):
     """
     classify_service = ClassifyService()
     request_id = request.ticket_id
-    logger.info(f"分类服务调用，工单ID: {request_id}")
+    logger.info(f"分类服务调用，工单ID: {request_id}, update_category={request.update_category}")
     classification = classify_service.get_classification(request)
     res = json.loads(classification)
 
@@ -38,8 +38,28 @@ def classify_work_order(request: ClassifyRequest):
     try:
         conn = get_db_connection()
         with conn.cursor() as cursor:
-            logger.info(f"准备更新数据库: id={request_id}, problem_type={problem_type}")
-            if request.update_category:
+            cursor.execute(
+                "SELECT category FROM wo_feedback WHERE id = %s",
+                (request_id,),
+            )
+            current_row = cursor.fetchone()
+            if not current_row:
+                logger.warning(f"工单 {request_id} 不存在，未更新")
+                return ClassifyResponse(
+                    problem_type=problem_type,
+                    priority=priority,
+                    user_sentiment=user_sentiment,
+                    confidence_score=confidence_score,
+                    analysis_reasoning=analysis_reasoning,
+                )
+
+            current_category = str(current_row.get("category") or "").strip()
+            should_update_category = request.update_category or current_category.upper() == "UNKNOWN"
+            logger.info(
+                f"准备更新数据库: id={request_id}, problem_type={problem_type}, "
+                f"current_category={current_category or '<empty>'}, should_update_category={should_update_category}"
+            )
+            if should_update_category:
                 cursor.execute(
                     "UPDATE wo_feedback SET category = %s, priority = %s, emotion = %s WHERE id = %s",
                     (problem_type, priority, user_sentiment, request_id),
@@ -52,7 +72,7 @@ def classify_work_order(request: ClassifyRequest):
             if cursor.rowcount > 0:
                 logger.info(f"工单 {request_id} 已更新")
             else:
-                logger.warning(f"工单 {request_id} 不存在，未更新")
+                logger.info(f"工单 {request_id} 字段值无变化")
         conn.commit()
     except Exception as e:
         logger.error(f"数据库更新失败: {e}", exc_info=True)
