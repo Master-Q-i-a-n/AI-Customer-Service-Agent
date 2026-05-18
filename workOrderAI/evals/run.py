@@ -8,8 +8,10 @@ from workOrderAI.evals.datasets import TASK_FILES, load_dataset
 
 
 async def collect_results(tasks: list[str], limit: int | None, skip_judge: bool) -> dict[str, list[dict]]:
+    """逐任务执行样本并收集原始评测结果。"""
     from workOrderAI.evals.runner import run_case
 
+    # 单条样本失败只记为该样本失败，不让一次偶发异常打断整轮回归。
     results_by_task = {}
     for task in tasks:
         cases = load_dataset(task)
@@ -40,6 +42,7 @@ async def collect_results(tasks: list[str], limit: int | None, skip_judge: bool)
 
 
 async def run_local(tasks: list[str], limit: int | None, skip_judge: bool, output_dir: Path) -> tuple[Path, Path]:
+    """运行本地评测并生成 summary.json 与 report.md。"""
     from workOrderAI.evals.reporting import build_summary, write_outputs
 
     results_by_task = await collect_results(tasks, limit=limit, skip_judge=skip_judge)
@@ -48,8 +51,10 @@ async def run_local(tasks: list[str], limit: int | None, skip_judge: bool, outpu
 
 
 def run_langsmith(tasks: list[str], sync_only: bool, skip_judge: bool, experiment_prefix: str | None):
+    """执行 LangSmith 数据集同步或平台实验。"""
     from workOrderAI.evals.langsmith_adapter import run_experiment, sync_dataset
 
+    # 纯 LangSmith 模式下，平台自己触发预测和打分，不生成本地 summary/report。
     for task in tasks:
         if sync_only:
             sync_dataset(task)
@@ -58,8 +63,10 @@ def run_langsmith(tasks: list[str], sync_only: bool, skip_judge: bool, experimen
 
 
 def run_langsmith_from_results(results_by_task: dict[str, list[dict]], skip_judge: bool, experiment_prefix: str | None):
+    """把本地已有结果回放到 LangSmith，而不是重新生成答案。"""
     from workOrderAI.evals.langsmith_adapter import run_experiment_from_results
 
+    # both 模式把本地已经得到的真实输出回放到 LangSmith，保证两端展示的是同一批结果。
     for task, results in results_by_task.items():
         run_experiment_from_results(
             task,
@@ -70,6 +77,7 @@ def run_langsmith_from_results(results_by_task: dict[str, list[dict]], skip_judg
 
 
 def parse_args():
+    """解析评测命令行参数。"""
     parser = argparse.ArgumentParser(description="Run work order AI evaluations.")
     parser.add_argument("--suite", default="core", choices=["core"])
     parser.add_argument("--mode", default="local", choices=["local", "langsmith", "both"])
@@ -83,6 +91,7 @@ def parse_args():
 
 
 def main():
+    """根据命令行模式调度本地、LangSmith 或双端评测流程。"""
     args = parse_args()
     tasks = list(TASK_FILES) if args.task == "all" else [args.task]
     if args.mode == "langsmith":
@@ -96,6 +105,7 @@ def main():
     if args.mode == "both":
         from workOrderAI.evals.reporting import build_summary, write_outputs
 
+        # 先完成本地执行和落盘，再同步到平台；这样本地报告永远是这一轮的基准结果。
         results_by_task = asyncio.run(
             collect_results(tasks, limit=args.limit, skip_judge=args.skip_judge)
         )

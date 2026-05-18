@@ -17,6 +17,8 @@ from workOrderAI.evals.scorers import (
 
 
 async def run_case(task: str, case: dict, skip_judge: bool = False) -> dict:
+    """按任务类型分发并执行单条评测样本。"""
+    # 三类能力的输入、输出和评分口径不同，统一入口只负责分发。
     if task == "classification":
         return await _run_classification_case(case)
     if task == "reply_suggestion":
@@ -27,10 +29,12 @@ async def run_case(task: str, case: dict, skip_judge: bool = False) -> dict:
 
 
 def run_case_sync(task: str, case: dict, skip_judge: bool = False) -> dict:
+    """为 LangSmith 等同步调用场景包装异步样本执行。"""
     return asyncio.run(run_case(task, case, skip_judge=skip_judge))
 
 
 async def _run_classification_case(case: dict) -> dict:
+    """执行一条分类样本并返回字段级规则评分。"""
     from workOrderAI.app.model.request import ClassifyRequest
     from workOrderAI.app.service.classify_service import ClassifyService
 
@@ -60,11 +64,13 @@ async def _run_classification_case(case: dict) -> dict:
 
 
 async def _run_reply_suggestion_case(case: dict, skip_judge: bool) -> dict:
+    """执行一条回复建议样本，并同时评估工具、事实与回复质量。"""
     from workOrderAI.app.model.request import ReplySuggestRequest
     from workOrderAI.app.service.suggest_service import SuggestService
 
     started_at = time.perf_counter()
     request = ReplySuggestRequest(**case["input"])
+    # 回复建议评测不仅看最终文本，还要保留工具调用顺序和输出，供后续证据校验使用。
     trace_token = start_tool_trace()
     try:
         answer = await SuggestService().get_suggestion(request)
@@ -78,6 +84,8 @@ async def _run_reply_suggestion_case(case: dict, skip_judge: bool) -> dict:
     judge_score = None if skip_judge else _safe_judge_reply(case["input"], answer, tool_trace, evidence_score)
     latency = time.perf_counter() - started_at
 
+    # 总分沿用“行为是否正确 + 事实是否命中 + 回复质量”三部分；
+    # evidence_score 目前作为诊断项保留，用来专门暴露无依据月份/天气等问题。
     component_scores = [tool_score["score"], fact_score["score"]]
     if judge_score is not None:
         component_scores.append(judge_score["average_score"] / 5.0)
@@ -119,6 +127,7 @@ async def _run_reply_suggestion_case(case: dict, skip_judge: bool) -> dict:
 
 
 async def _run_knowledge_case(case: dict, skip_judge: bool) -> dict:
+    """执行一条知识问答样本，并评估来源、内容与拒答表现。"""
     from workOrderAI.app.service.knowledge_service import KnowledgeService
 
     started_at = time.perf_counter()
@@ -130,6 +139,7 @@ async def _run_knowledge_case(case: dict, skip_judge: bool) -> dict:
     judge_score = None if skip_judge else _safe_judge_knowledge(case["input"]["question"], answer, sources)
     refusal_judge_score = None
     if case["expected"].get("should_refuse") and not skip_judge:
+        # 拒答往往存在多种等价说法，单靠固定短语容易误判，因此单独做语义判断。
         refusal_judge_score = _safe_judge_refusal(case["input"]["question"], answer)
     content_judge_score = score_knowledge_content_judge(refusal_judge_score or judge_score, case["expected"])
     content_score = combine_knowledge_content_scores(

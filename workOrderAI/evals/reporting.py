@@ -4,6 +4,8 @@ from pathlib import Path
 
 
 def build_summary(results_by_task: dict[str, list[dict]]) -> dict:
+    """把逐样本结果汇总成任务级和整体级指标。"""
+    # 汇总层只消费各样本结果，不重新参与评分，方便与 LangSmith 口径对齐。
     summary = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
         "tasks": {},
@@ -26,6 +28,8 @@ def build_summary(results_by_task: dict[str, list[dict]]) -> dict:
 
 
 def write_outputs(output_dir: Path, summary: dict, results_by_task: dict[str, list[dict]]) -> tuple[Path, Path]:
+    """把机器可读摘要和人工可读报告写入结果目录。"""
+    # summary.json 面向机器复盘，report.md 面向人快速浏览。
     output_dir.mkdir(parents=True, exist_ok=True)
     summary_path = output_dir / "summary.json"
     report_path = output_dir / "report.md"
@@ -35,6 +39,7 @@ def write_outputs(output_dir: Path, summary: dict, results_by_task: dict[str, li
 
 
 def render_markdown_report(summary: dict, results_by_task: dict[str, list[dict]]) -> str:
+    """把汇总与逐样本结果渲染成 Markdown 报告。"""
     lines = [
         "# Agent Evaluation Report",
         "",
@@ -81,6 +86,7 @@ def render_markdown_report(summary: dict, results_by_task: dict[str, list[dict]]
 
 
 def _build_task_summary(task: str, results: list[dict]) -> dict:
+    """按任务类型生成各自关注的汇总指标。"""
     case_count = len(results)
     passed_count = sum(1 for item in results if item.get("passed"))
     summary = {
@@ -104,6 +110,7 @@ def _build_task_summary(task: str, results: list[dict]) -> dict:
             for field in fields
         }
     elif task == "reply_suggestion":
+        # 回复建议额外观察工具使用情况，便于发现“答对了但没按 Agent 流程做”的样本。
         summary["average_tool_calls"] = _average(
             [item.get("tool_score", {}).get("tool_call_count", 0) for item in results]
         )
@@ -117,6 +124,7 @@ def _build_task_summary(task: str, results: list[dict]) -> dict:
         refusal_results = [
             item for item in results if item.get("expected", {}).get("should_refuse")
         ]
+        # 拒答指标单独统计，避免被普通问答的来源命中率掩盖。
         summary["refusal_case_count"] = len(refusal_results)
         summary["refusal_pass_rate"] = _average(
             [float(item.get("content_score", {}).get("refusal_ok", False)) for item in refusal_results]

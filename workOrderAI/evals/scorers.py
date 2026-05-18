@@ -16,6 +16,7 @@ PRIORITY_ORDER = ("低", "中", "高", "紧急")
 
 
 def score_classification(actual: dict, expected: dict) -> dict:
+    """计算分类任务的字段得分、精确命中与整体通过结果。"""
     field_scores = {
         "problem_type": float(actual.get("problem_type") == expected.get("problem_type")),
         "priority": score_priority(actual.get("priority"), expected.get("priority")),
@@ -35,6 +36,8 @@ def score_classification(actual: dict, expected: dict) -> dict:
 
 
 def score_priority(actual: str | None, expected: str | None) -> float:
+    """按优先级等级距离给分，而不是只做对错二分。"""
+    # 优先级有天然顺序，错一级和错三级不该拿到同样的分数。
     if actual not in PRIORITY_ORDER or expected not in PRIORITY_ORDER:
         return 0.0
     distance = abs(PRIORITY_ORDER.index(actual) - PRIORITY_ORDER.index(expected))
@@ -42,6 +45,8 @@ def score_priority(actual: str | None, expected: str | None) -> float:
 
 
 def score_tool_usage(tool_trace: list[dict], expected_tools: list[str], forbidden_tools: list[str]) -> dict:
+    """检查回复建议是否调用了必需工具，且没有调用禁用工具。"""
+    # 这一层只约束“该不该用”，调用顺序和参数细节留给样本复盘与 judge 判断。
     names = [item.get("name", "") for item in tool_trace]
     counts = Counter(names)
     missing_tools = [name for name in expected_tools if counts[name] == 0]
@@ -58,6 +63,8 @@ def score_tool_usage(tool_trace: list[dict], expected_tools: list[str], forbidde
 
 
 def score_required_facts(answer: str, expected: dict) -> dict:
+    """检查回复中是否包含必须事实，并避开禁止出现的事实。"""
+    # 这里放适合硬判定的事实，例如必须出现的月份，避免全交给模型裁判。
     answer = answer or ""
     normalized_answer = _normalize_fact_text(answer)
     required_facts = expected.get("required_facts", [])
@@ -81,6 +88,8 @@ def score_required_facts(answer: str, expected: dict) -> dict:
 
 
 def score_reply_evidence_alignment(answer: str, tool_trace: list[dict]) -> dict:
+    """核对回复中的结构化事实是否能被工具输出支撑。"""
+    # 将回复中的结构化事实反查到工具输出，专门识别“看似合理但没有证据”的扩写。
     answer = answer or ""
     evidence_outputs = [
         str(item.get("output") or "")
@@ -152,6 +161,7 @@ def _normalize_weather_fact(text: str) -> str:
 
 
 def score_knowledge_sources(actual_sources: list[dict], expected: dict) -> dict:
+    """评估知识问答返回来源与期望来源的命中情况。"""
     actual_titles = [str(item.get("title", "")) for item in actual_sources or []]
     expected_sources = expected.get("expected_sources", [])
     should_refuse = bool(expected.get("should_refuse"))
@@ -162,6 +172,7 @@ def score_knowledge_sources(actual_sources: list[dict], expected: dict) -> dict:
     ]
     missing_sources = [source for source in expected_sources if source not in matched_sources]
     if should_refuse:
+        # 拒答样本关注的是最终答案是否拒答正确，retriever 返回低相关候选文档不直接算错。
         passed = True
         score = 1.0
     elif expected_sources:
@@ -181,6 +192,8 @@ def score_knowledge_sources(actual_sources: list[dict], expected: dict) -> dict:
 
 
 def score_answer_contains(answer: str, expected: dict) -> dict:
+    """用轻量规则检查答案中的必要词与拒答短语。"""
+    # 规则层先做便宜、稳定的字面检查；语义等价再交给 judge 补足。
     answer = answer or ""
     required_terms = expected.get("answer_contains", [])
     should_refuse = bool(expected.get("should_refuse"))
@@ -201,6 +214,7 @@ def score_answer_contains(answer: str, expected: dict) -> dict:
 
 
 def score_knowledge_content_judge(judge_score: dict | None, expected: dict) -> dict | None:
+    """把 judge 原始输出转换成知识问答内容分。"""
     if judge_score is None:
         return None
     if judge_score.get("error"):
@@ -235,10 +249,12 @@ def combine_knowledge_content_scores(
     judge_score: dict | None,
     expected: dict,
 ) -> dict:
+    """合并规则层与 judge 层的内容判断，得到最终内容分。"""
     should_refuse = bool(expected.get("should_refuse"))
     refusal_ok = bool(rule_score.get("refusal_ok", not should_refuse))
 
     if should_refuse and judge_score is not None:
+        # 拒答允许“固定短语命中”或“judge 语义认可”任一成立，减少对措辞的误伤。
         refusal_ok = refusal_ok or bool(judge_score.get("refusal_ok"))
 
     if should_refuse and refusal_ok:

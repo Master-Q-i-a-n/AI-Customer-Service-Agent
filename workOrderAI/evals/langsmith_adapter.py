@@ -27,10 +27,12 @@ DATASET_PREFIX = "workorder-agent"
 
 
 def dataset_name(task: str) -> str:
+    """生成 LangSmith 中稳定使用的数据集名称。"""
     return f"{DATASET_PREFIX}-{task}-v1"
 
 
 def sync_dataset(task: str, client: Client | None = None) -> str:
+    """把本地样本幂等同步到 LangSmith 数据集。"""
     client = client or Client()
     name = dataset_name(task)
     try:
@@ -42,6 +44,7 @@ def sync_dataset(task: str, client: Client | None = None) -> str:
     for case in load_dataset(task):
         examples.append(
             {
+                # 样本 ID 由任务名和 case id 稳定生成，重复同步时才能准确更新同一条样本。
                 "id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"{name}:{case['id']}")),
                 "inputs": case["input"],
                 "outputs": {
@@ -63,6 +66,7 @@ def sync_dataset(task: str, client: Client | None = None) -> str:
     }
     examples_to_create = [example for example in examples if example["id"] not in existing_example_ids]
     examples_to_update = [example for example in examples if example["id"] in existing_example_ids]
+    # create + update 分流后，同步操作可重复执行，不会因为已有样本而触发 409 冲突。
     if examples_to_create:
         client.create_examples(dataset_name=name, examples=examples_to_create)
     if examples_to_update:
@@ -71,9 +75,11 @@ def sync_dataset(task: str, client: Client | None = None) -> str:
 
 
 def run_experiment(task: str, skip_judge: bool = False, experiment_prefix: str | None = None):
+    """让 LangSmith 直接驱动预测与评测。"""
     client = Client()
     name = sync_dataset(task, client=client)
     metadata = {
+        # 元数据把模型、prompt 和代码版本挂到实验上，方便以后比较不同版本的效果。
         "task": task,
         "git_commit": _git_commit(),
         "chat_model": config["model"]["chat_model"],
@@ -96,6 +102,7 @@ def run_experiment_from_results(
     skip_judge: bool = False,
     experiment_prefix: str | None = None,
 ):
+    """把本地已经产出的结果映射回 LangSmith 样本并执行评估。"""
     client = Client()
     name = sync_dataset(task, client=client)
     result_by_input = {
@@ -116,6 +123,7 @@ def run_experiment_from_results(
         "prompt_fingerprint": _prompt_fingerprint(task),
         "replayed_from_local_results": True,
     }
+    # both 模式不重新生成答案，只把本地同一批输出提交到 LangSmith 做平台化展示。
     return evaluate(
         lambda inputs: _predict_from_results(result_by_input, inputs),
         data=examples,
@@ -127,6 +135,7 @@ def run_experiment_from_results(
 
 
 def _predict(task: str, inputs: dict) -> dict:
+    """供 LangSmith 实验调用的预测包装函数。"""
     synthetic_case = {
         "id": "langsmith-case",
         "input": inputs,
@@ -140,6 +149,7 @@ def _predict(task: str, inputs: dict) -> dict:
 
 
 def _predict_from_results(result_by_input: dict[str, dict | None], inputs: dict) -> dict | None:
+    """按输入内容取回本地已生成的结果。"""
     return result_by_input[_input_key(inputs)]
 
 
@@ -148,11 +158,14 @@ def _input_key(inputs: dict) -> str:
 
 
 def _build_langsmith_evaluators(task: str, skip_judge: bool):
+    """构造当前任务在 LangSmith 中使用的 evaluator 列表。"""
     return [_build_rule_evaluator(task, skip_judge=skip_judge)]
 
 
 def _build_rule_evaluator(task: str, skip_judge: bool = False):
+    """构造复用本地 scorer 的 LangSmith 规则评估器。"""
     def evaluator(run, example):
+        # LangSmith 复用本地 scorer，保证平台分数和本地 summary 的定义一致。
         expected_bundle = example.outputs or {}
         expected = expected_bundle.get("expected", {})
         outputs = run.outputs or {}
@@ -298,6 +311,7 @@ def _knowledge_content_judge_score(
     expected: dict,
     judge_score: dict | None = None,
 ) -> dict | None:
+    """为知识问答生成可与规则分合并的内容 judge 分。"""
     question = inputs.get("question", "")
     if expected.get("should_refuse"):
         refusal_scores = judge_refusal(

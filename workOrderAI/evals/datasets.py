@@ -11,6 +11,8 @@ TASK_FILES = {
 
 
 def load_dataset(task: str) -> list[dict]:
+    """按任务名加载并校验对应的 JSONL 评测样本。"""
+    # 数据集统一用 JSONL：一行就是一条样本，便于手工维护和逐条定位问题。
     file_name = TASK_FILES.get(task)
     if file_name is None:
         raise ValueError(f"unsupported eval task: {task}")
@@ -29,12 +31,15 @@ def load_dataset(task: str) -> list[dict]:
 
 
 def load_suite(suite: str) -> dict[str, list[dict]]:
+    """加载一个评测套件下的全部任务数据集。"""
     if suite != "core":
         raise ValueError(f"unsupported eval suite: {suite}")
     return {task: load_dataset(task) for task in TASK_FILES}
 
 
 def validate_case(task: str, case: dict, line_number: int | None = None) -> None:
+    """校验单条样本是否满足该任务运行所需的最小结构。"""
+    # 先在加载阶段固定样本契约，避免评测跑到一半才因为字段缺失失败。
     label = f"{task}:{line_number}" if line_number is not None else task
     for field in ("id", "input", "expected", "tags"):
         if field not in case:
@@ -48,6 +53,7 @@ def validate_case(task: str, case: dict, line_number: int | None = None) -> None
         raise ValueError(f"{label} tags must be a list")
 
     if task == "classification":
+        # 不同任务的期望结构不同，这里只校验各自真正依赖的字段。
         for field in ("problem_type", "priority", "user_sentiment"):
             if field not in case["expected"]:
                 raise ValueError(f"{label} expected missing field: {field}")
