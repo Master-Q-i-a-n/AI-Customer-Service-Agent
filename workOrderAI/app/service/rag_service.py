@@ -110,6 +110,8 @@ class RagService:
             documents = await retriever.ainvoke(query)
             documents = documents[:self._rerank_candidate_k()]
             logger.info("[RAG] retrieved %s candidate documents, elapsed=%.2fs", len(documents), time.perf_counter() - started_at)
+            for idx, doc in enumerate(documents):
+                logger.info("[RAG] Document %d content:\n%s", idx + 1, doc.page_content)  # 如果是 Document 对象
             return await self.rerank_documents(query, documents, self._rerank_top_k(), "[RAG]")
         except Exception as e:
             logger.error("[RAG] retrieve failed: %s", e)
@@ -185,7 +187,7 @@ class RagService:
 
             source_documents = self._build_source_documents(documents)
             try:
-                max_documents = 3
+                max_documents = self._rerank_top_k()
 
                 async def summarize_document(index, doc):
                     single_context = f"【参考资料{index}】{doc.page_content}\n"

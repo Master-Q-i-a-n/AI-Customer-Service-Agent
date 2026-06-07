@@ -2,7 +2,8 @@ import unittest
 
 from langchain_community.chat_models.tongyi import ChatTongyi
 
-from workOrderAI.models.factory import ChatModelFactory, judge_model, router_model
+from workOrderAI.models.factory import ChatModelFactory, judge_model, reranker_model, router_model
+from workOrderAI.utils.config import config
 
 
 class ModelFactoryTests(unittest.TestCase):
@@ -18,6 +19,10 @@ class ModelFactoryTests(unittest.TestCase):
         self.assertIsInstance(router_model, ChatTongyi)
         self.assertEqual(router_model.model_name, "qwen3-32b")
         self.assertEqual(router_model.model_kwargs.get("enable_thinking"), False)
+
+    def test_reranker_model_uses_configured_top_n(self):
+        self.assertEqual(reranker_model.model, config["model"]["reranker_model"])
+        self.assertEqual(reranker_model.top_n, config["vector_store"]["rerank_top_k"])
 
 
 if __name__ == "__main__":
