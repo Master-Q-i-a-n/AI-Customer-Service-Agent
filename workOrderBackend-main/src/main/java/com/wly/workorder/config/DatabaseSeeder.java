@@ -44,6 +44,7 @@ public class DatabaseSeeder implements CommandLineRunner {
     ensureCaseMemoryTable();
     ensureTicketMemoryTable();
     ensureUserMemoryTable();
+    ensureCommerceRefundTables();
 
     Integer userCount = jdbcTemplate.queryForObject("select count(*) from wo_user", Integer.class);
     if (userCount == null || userCount == 0) {
@@ -55,6 +56,8 @@ public class DatabaseSeeder implements CommandLineRunner {
     if (feedbackCount == null || feedbackCount == 0) {
       seedFeedbacks();
     }
+
+    seedCommerceOrders();
 
     backfillServiceGroups();
   }
@@ -281,12 +284,183 @@ public class DatabaseSeeder implements CommandLineRunner {
       set service_group = case
         when category = ? then ?
         when category = ? then ?
+        when category = ? then ?
         else ?
       end
       """,
       TicketCategory.技术故障.name(), ServiceGroup.TECH_SUPPORT.name(),
       TicketCategory.账单问题.name(), ServiceGroup.BILLING_SERVICE.name(),
+      TicketCategory.退款售后.name(), ServiceGroup.AFTER_SALES.name(),
       ServiceGroup.PRODUCT_CONSULTING.name()
+    );
+  }
+
+  private void ensureCommerceRefundTables() {
+    jdbcTemplate.execute(
+      """
+      create table if not exists ec_order (
+        id varchar(36) primary key,
+        order_no varchar(64) not null,
+        owner_username varchar(64) not null,
+        status varchar(32) not null,
+        total_amount decimal(12,2) not null,
+        discount_amount decimal(12,2) not null default 0,
+        paid_amount decimal(12,2) not null,
+        paid_at varchar(19) not null default '',
+        created_at varchar(19) not null,
+        updated_at varchar(19) not null,
+        unique key uk_ec_order_no (order_no)
+      )
+      """
+    );
+    jdbcTemplate.execute(
+      """
+      create table if not exists ec_order_item (
+        id varchar(36) primary key,
+        order_id varchar(36) not null,
+        product_name varchar(255) not null,
+        sku_name varchar(255) not null default '',
+        quantity int not null,
+        unit_price decimal(12,2) not null,
+        discount_share decimal(12,2) not null default 0,
+        paid_amount decimal(12,2) not null,
+        returnable tinyint not null default 1,
+        key idx_order_item_order (order_id)
+      )
+      """
+    );
+    jdbcTemplate.execute(
+      """
+      create table if not exists ec_payment (
+        id varchar(36) primary key,
+        order_id varchar(36) not null unique,
+        channel varchar(32) not null,
+        transaction_no varchar(128) not null,
+        paid_amount decimal(12,2) not null,
+        refunded_amount decimal(12,2) not null default 0,
+        status varchar(32) not null
+      )
+      """
+    );
+    jdbcTemplate.execute(
+      """
+      create table if not exists ec_shipment (
+        id varchar(36) primary key,
+        order_id varchar(36) not null unique,
+        status varchar(32) not null,
+        tracking_no varchar(128) not null default '',
+        shipped_at varchar(19) not null default '',
+        delivered_at varchar(19) not null default ''
+      )
+      """
+    );
+    jdbcTemplate.execute(
+      """
+      create table if not exists ec_refund_policy (
+        id varchar(36) primary key,
+        code varchar(64) not null unique,
+        title varchar(255) not null,
+        content text not null,
+        refund_type varchar(32) not null,
+        active tinyint not null default 1,
+        updated_at varchar(19) not null
+      )
+      """
+    );
+    jdbcTemplate.execute(
+      """
+      create table if not exists ec_refund_request (
+        id varchar(36) primary key,
+        refund_no varchar(64) not null unique,
+        ticket_id varchar(36) not null,
+        order_id varchar(36) not null,
+        owner_username varchar(64) not null,
+        refund_type varchar(32) not null,
+        reason text not null,
+        requested_item_ids_json text not null,
+        calculated_amount decimal(12,2) not null,
+        eligibility_code varchar(64) not null,
+        eligibility_reason text not null,
+        agent_plan_json text not null,
+        policy_sources_json text not null,
+        review_status varchar(32) not null,
+        execution_status varchar(32) not null,
+        reviewed_by varchar(64) not null default '',
+        review_comment text not null,
+        idempotency_key varchar(128) not null,
+        version int not null default 1,
+        created_at varchar(19) not null,
+        updated_at varchar(19) not null,
+        unique key uk_refund_idempotency (idempotency_key),
+        key idx_refund_ticket (ticket_id),
+        key idx_refund_order (order_id)
+      )
+      """
+    );
+    jdbcTemplate.execute(
+      """
+      create table if not exists ec_refund_audit (
+        id varchar(36) primary key,
+        refund_request_id varchar(36) not null,
+        event_type varchar(64) not null,
+        operator_type varchar(32) not null,
+        operator_id varchar(64) not null,
+        summary varchar(500) not null,
+        created_at varchar(19) not null,
+        key idx_refund_audit_request (refund_request_id)
+      )
+      """
+    );
+  }
+
+  private void seedCommerceOrders() {
+    String now = now();
+    String recentDelivery = LocalDateTime.now().minusDays(1).format(FMT);
+    String oldDelivery = LocalDateTime.now().minusDays(10).format(FMT);
+
+    seedCommerceOrder("order-1004-paid", "ORD-1004-PAID", "1004", "PAID", "399.00", "NOT_SHIPPED", "", true, "扫拖一体机器人", now);
+    seedCommerceOrder("order-1004-shipped", "ORD-1004-SHIPPED", "1004", "PAID", "699.00", "SHIPPED", "", true, "无线吸尘器", now);
+    seedCommerceOrder("order-1004-new", "ORD-1004-DELIVERED", "1004", "DELIVERED", "1299.00", "DELIVERED", recentDelivery, true, "智能洗地机", now);
+    seedCommerceOrder("order-1004-old", "ORD-1004-EXPIRED", "1004", "DELIVERED", "199.00", "DELIVERED", oldDelivery, true, "清洁耗材套装", now);
+    seedCommerceOrder("order-other", "ORD-OTHER-USER", "other", "PAID", "299.00", "NOT_SHIPPED", "", true, "除螨仪", now);
+    // demo 账号使用同样的两条核心路径，方便直接从前端体验。
+    seedCommerceOrder("order-user-paid", "ORD-USER-PAID", "user", "PAID", "399.00", "NOT_SHIPPED", "", true, "扫拖一体机器人", now);
+    seedCommerceOrder("order-user-delivered", "ORD-USER-DELIVERED", "user", "DELIVERED", "1299.00", "DELIVERED", recentDelivery, true, "智能洗地机", now);
+
+    jdbcTemplate.update(
+      "insert ignore into ec_refund_policy (id, code, title, content, refund_type, active, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
+      "policy-unshipped", "UNSHIPPED_STANDARD", "未发货订单退款", "已支付且未发货的订单可申请整单退款。", "UNSHIPPED_REFUND", 1, now
+    );
+    jdbcTemplate.update(
+      "insert ignore into ec_refund_policy (id, code, title, content, refund_type, active, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
+      "policy-return", "RETURN_7_DAYS", "七天退货退款", "已签收且不超过七天、商品支持退货时可申请整单退货退款。", "RETURN_REFUND", 1, now
+    );
+    jdbcTemplate.update(
+      "insert ignore into ec_refund_policy (id, code, title, content, refund_type, active, updated_at) values (?, ?, ?, ?, ?, ?, ?)",
+      "policy-non-return", "NON_RETURNABLE", "不可退商品说明", "标记为不可退的商品不支持退货退款。", "RETURN_REFUND", 1, now
+    );
+  }
+
+  private void seedCommerceOrder(
+    String id, String orderNo, String owner, String orderStatus, String amount,
+    String shipmentStatus, String deliveredAt, boolean returnable, String productName, String now
+  ) {
+    jdbcTemplate.update(
+      "insert ignore into ec_order (id, order_no, owner_username, status, total_amount, discount_amount, paid_amount, paid_at, created_at, updated_at) values (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)",
+      id, orderNo, owner, orderStatus, amount, amount, now, now, now
+    );
+    jdbcTemplate.update(
+      "insert ignore into ec_order_item (id, order_id, product_name, sku_name, quantity, unit_price, discount_share, paid_amount, returnable) values (?, ?, ?, ?, 1, ?, 0, ?, ?)",
+      id + "-item", id, productName, "标准版", amount, amount, returnable ? 1 : 0
+    );
+    jdbcTemplate.update(
+      "insert ignore into ec_payment (id, order_id, channel, transaction_no, paid_amount, refunded_amount, status) values (?, ?, 'MOCK', ?, ?, 0, 'PAID')",
+      id + "-payment", id, "TX-" + orderNo, amount
+    );
+    jdbcTemplate.update(
+      "insert ignore into ec_shipment (id, order_id, status, tracking_no, shipped_at, delivered_at) values (?, ?, ?, ?, ?, ?)",
+      id + "-shipment", id, shipmentStatus, shipmentStatus.equals("NOT_SHIPPED") ? "" : "TRACK-" + orderNo,
+      shipmentStatus.equals("NOT_SHIPPED") ? "" : now, deliveredAt
     );
   }
 

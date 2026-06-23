@@ -135,7 +135,7 @@
     <el-dialog
       v-model="detailDialogVisible"
       title="工单详情"
-      width="920px"
+      width="min(920px, calc(100vw - 24px))"
       append-to-body
       :close-on-click-modal="false"
       @closed="handleDialogClosed"
@@ -334,6 +334,13 @@
               </div>
             </div>
 
+            <RefundReviewPanel
+              :ticket-id="selectedWorkOrder.id"
+              :ticket-category="selectedWorkOrder.category"
+              @reply-draft-ready="applyRefundReplyDraft"
+              @updated="handleRefundUpdated"
+            />
+
             <div v-if="canReplySelected" class="work-order-composer">
               <div class="work-order-composer__header">
                 <div class="work-order-detail__section-title">回复用户</div>
@@ -409,6 +416,7 @@ import {
   WarningFilled
 } from '@element-plus/icons-vue'
 import csReplyQuill from '../components/biz/csReplyQuill.vue'
+import RefundReviewPanel from '../components/biz/RefundReviewPanel.vue'
 import request from '../api/http'
 import {
   getSuggestion,
@@ -756,6 +764,29 @@ async function generateAiReplySuggestion() {
     ElMessage.error(error.message || 'AI 回复建议生成失败')
   } finally {
     aiReplyLoading.value = false
+  }
+}
+
+async function applyRefundReplyDraft(content) {
+  if (!content) return
+  if (replyHasContent.value) {
+    try {
+      await ElMessageBox.confirm('当前回复框已有内容，是否用退款处理草稿替换？', '替换确认', {
+        confirmButtonText: '替换',
+        cancelButtonText: '取消',
+        type: 'warning'
+      })
+    } catch {
+      return
+    }
+  }
+  replyForm.content = buildReplyHtml(content)
+  ElMessage.success('退款处理草稿已填入回复框')
+}
+
+async function handleRefundUpdated() {
+  if (selectedWorkOrder.value) {
+    await loadWorkOrderDetail(selectedWorkOrder.value.id)
   }
 }
 

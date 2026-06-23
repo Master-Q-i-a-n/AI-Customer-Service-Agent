@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(
   properties = {
@@ -32,6 +33,24 @@ class DatabaseMigrationTest {
 
   @Autowired
   private JdbcTemplate jdbcTemplate;
+
+  @Test
+  void createsRefundCommerceTablesAndSeedOrders() {
+    for (String table : List.of(
+      "ec_order", "ec_order_item", "ec_payment", "ec_shipment",
+      "ec_refund_policy", "ec_refund_request", "ec_refund_audit"
+    )) {
+      Integer count = jdbcTemplate.queryForObject(
+        "select count(*) from INFORMATION_SCHEMA.TABLES where lower(TABLE_NAME) = ?",
+        Integer.class,
+        table
+      );
+      assertEquals(1, count, table + " should exist");
+    }
+
+    Integer orderCount = jdbcTemplate.queryForObject("select count(*) from ec_order", Integer.class);
+    assertTrue(orderCount != null && orderCount >= 5);
+  }
 
   @Test
   void creating_feedback_should_write_a_row_to_feedback_table() {

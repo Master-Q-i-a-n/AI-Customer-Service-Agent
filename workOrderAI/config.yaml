@@ -48,3 +48,7 @@ memory:
   device_environment_ttl_days: 365
   preference_ttl_days: 180
   recurring_issue_ttl_days: 90
+
+refund:
+  backend_base_url: http://localhost:8080
+  internal_token: local-refund-agent

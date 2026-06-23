@@ -1,4 +1,5 @@
 import unittest
+import json
 from unittest.mock import patch
 
 from workOrderAI.agent.agent_context import reset_current_username, set_current_username
@@ -46,6 +47,26 @@ class TicketMemoryServiceTests(unittest.TestCase):
 
         self.assertEqual(result["attempted_steps"][0]["status"], "FAILED")
 
+    def test_refund_memory_keeps_selection_but_not_transaction_amount(self):
+        service = TicketMemoryService.__new__(TicketMemoryService)
+
+        memory = service._normalize_memory(
+            {
+                "summary": "用户申请订单ORD-1退款，可退金额399元，支付交易号TX-SECRET",
+                "confirmed_facts": ["用户确认订单ORD-1", "系统计算可退399元"],
+                "attempted_steps": [
+                    {"action": "查询支付交易号TX-SECRET", "result": "金额399元", "status": "SUCCESS"}
+                ],
+                "unresolved": ["等待管理员审核399元退款"],
+            },
+            {},
+        )
+
+        serialized = json.dumps(memory, ensure_ascii=False)
+        self.assertIn("用户确认订单ORD-1", serialized)
+        self.assertNotIn("399", serialized)
+        self.assertNotIn("TX-SECRET", serialized)
+
 
 class CaseMemoryVectorTests(unittest.TestCase):
     def test_vector_content_contains_problem_facts_but_not_final_reply(self):
@@ -67,6 +88,25 @@ class CaseMemoryVectorTests(unittest.TestCase):
         self.assertIn("清扫时不出水", document.page_content)
         self.assertIn("水箱有水", document.page_content)
         self.assertNotIn("请更换水泵", document.page_content)
+
+    def test_refund_vector_excludes_amount_and_transaction_number(self):
+        service = CaseMemoryService.__new__(CaseMemoryService)
+        row = {
+            "id": "case-refund",
+            "ticket_id": "fb-refund",
+            "ticket_code": "FB-RF",
+            "title": "未发货退款",
+            "problem_summary": "订单ORD-1未发货，可退399元，交易号TX-SECRET",
+            "confirmed_facts_json": '["用户确认订单ORD-1", "退款金额399元"]',
+            "category": "退款售后",
+            "active": 1,
+        }
+
+        content = service._to_vector_document(row).page_content
+
+        self.assertIn("ORD-1", content)
+        self.assertNotIn("399", content)
+        self.assertNotIn("TX-SECRET", content)
 
 
 class UserMemoryServiceTests(unittest.TestCase):

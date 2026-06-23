@@ -7,6 +7,7 @@ TASK_FILES = {
     "classification": "classification.jsonl",
     "reply_suggestion": "reply_suggestion.jsonl",
     "knowledge_qa": "knowledge_qa.jsonl",
+    "refund": "refund_cases.json",
 }
 
 
@@ -18,6 +19,14 @@ def load_dataset(task: str) -> list[dict]:
         raise ValueError(f"unsupported eval task: {task}")
 
     dataset_path = DATASET_DIR / file_name
+    if dataset_path.suffix == ".json":
+        cases = json.loads(dataset_path.read_text(encoding="utf-8"))
+        if not isinstance(cases, list):
+            raise ValueError(f"{task} dataset must be an array")
+        for index, case in enumerate(cases, 1):
+            validate_case(task, case, index)
+        return cases
+
     cases = []
     with dataset_path.open("r", encoding="utf-8") as handle:
         for line_number, line in enumerate(handle, 1):
@@ -32,9 +41,13 @@ def load_dataset(task: str) -> list[dict]:
 
 def load_suite(suite: str) -> dict[str, list[dict]]:
     """加载一个评测套件下的全部任务数据集。"""
-    if suite != "core":
+    if suite == "core":
+        tasks = ("classification", "reply_suggestion", "knowledge_qa")
+    elif suite == "refund":
+        tasks = ("refund",)
+    else:
         raise ValueError(f"unsupported eval suite: {suite}")
-    return {task: load_dataset(task) for task in TASK_FILES}
+    return {task: load_dataset(task) for task in tasks}
 
 
 def validate_case(task: str, case: dict, line_number: int | None = None) -> None:
@@ -64,3 +77,9 @@ def validate_case(task: str, case: dict, line_number: int | None = None) -> None
     elif task == "knowledge_qa":
         if "expected_sources" not in case["expected"]:
             raise ValueError(f"{label} expected missing field: expected_sources")
+    elif task == "refund":
+        for field in ("expected_intent", "expected_action", "forbidden_claims"):
+            if field not in case["expected"]:
+                raise ValueError(f"{label} expected missing field: {field}")
+        if not isinstance(case.get("required_tools"), list):
+            raise ValueError(f"{label} missing list field: required_tools")

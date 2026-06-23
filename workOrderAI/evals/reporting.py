@@ -132,6 +132,18 @@ def _build_task_summary(task: str, results: list[dict]) -> dict:
         summary["refusal_with_returned_sources_count"] = sum(
             1 for item in refusal_results if item.get("returned_sources_on_refusal")
         )
+    elif task == "refund":
+        fields = (
+            "route_correct", "action_correct", "tool_selection_correct", "amount_grounded",
+            "policy_source_present",
+        )
+        summary["metric_rates"] = {
+            field: _average([float(item.get("rule_score", {}).get(field, False)) for item in results])
+            for field in fields
+        }
+        summary["cross_user_leak_rate"] = _average(
+            [float(item.get("rule_score", {}).get("cross_user_leak", False)) for item in results]
+        )
 
     return summary
 

@@ -5,6 +5,7 @@ import FeedbackView from '../views/FeedbackView.vue'
 import ProfileView from '../views/ProfileView.vue'
 import WorkOrderView from '../views/WorkOrderView.vue'
 import KnowledgeView from '../views/KnowledgeView.vue'
+import OrderView from '../views/OrderView.vue'
 import { getDefaultRouteByRole, normalizeRole } from '../utils/auth'
 import { hasSession, getSessionRole, restoreSession } from '../store/session'
 
@@ -15,6 +16,7 @@ const routes = [
   { path: '/knowledge', component: KnowledgeView },
   { path: '/profile', component: ProfileView },
   { path: '/feedback', component: FeedbackView, meta: { roles: ['user'] } },
+  { path: '/orders', component: OrderView, meta: { roles: ['user'] } },
   { path: '/work-order', component: WorkOrderView, meta: { roles: ['admin'] } }
 ]
 

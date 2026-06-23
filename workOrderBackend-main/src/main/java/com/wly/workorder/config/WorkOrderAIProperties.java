@@ -22,6 +22,7 @@ public class WorkOrderAIProperties {
     private int timeout = 30000;
     private int retryCount = 2;
     private boolean asyncEnabled = true;
+    private String internalToken = "local-refund-agent";
   }
 
   @Data

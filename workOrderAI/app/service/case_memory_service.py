@@ -10,6 +10,7 @@ from langchain_core.documents import Document
 
 from workOrderAI.app.model.database import get_db_connection
 from workOrderAI.app.model.request import CaseMemoryUpsertRequest
+from workOrderAI.app.service.memory_sanitizer import sanitize_memory_text
 from workOrderAI.models.factory import embed_model, reranker_model
 from workOrderAI.utils.config import config
 from workOrderAI.utils.logger_handler import logger
@@ -221,11 +222,17 @@ class CaseMemoryService:
         return {"total": len(rows), "active": len(active_rows)}
 
     def _to_vector_document(self, row: dict) -> Document:
+        category = str(row.get("category") or "")
+        problem_summary = str(row.get("problem_summary") or row.get("problem_text") or "")
+        confirmed_facts = self._json_list(row.get("confirmed_facts_json"))
+        if category == "退款售后":
+            problem_summary = sanitize_memory_text(problem_summary)
+            confirmed_facts = [sanitize_memory_text(item) for item in confirmed_facts]
         content = self._build_vector_content(
             str(row.get("title") or ""),
-            str(row.get("problem_summary") or row.get("problem_text") or ""),
-            self._json_list(row.get("confirmed_facts_json")),
-            str(row.get("category") or ""),
+            problem_summary,
+            [item for item in confirmed_facts if item],
+            category,
         )
         return Document(
             page_content=content,

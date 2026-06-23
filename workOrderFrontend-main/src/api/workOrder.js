@@ -52,3 +52,25 @@ export function refreshWorkOrderAnalysis(id) {
     method: 'post'
   })
 }
+
+export const getRefundReview = id => request({
+  url: `/work-order/${id}/refund`,
+  method: 'get'
+})
+
+export const analyzeRefund = id => request({
+  url: `/work-order/${id}/refund/analyze`,
+  method: 'post'
+})
+
+export const reviewRefund = (id, data) => request({
+  url: `/work-order/${id}/refund/review`,
+  method: 'post',
+  data
+})
+
+export const confirmReturnReceived = (id, data) => request({
+  url: `/work-order/${id}/refund/return-received`,
+  method: 'post',
+  data
+})

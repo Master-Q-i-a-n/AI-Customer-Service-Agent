@@ -293,6 +293,27 @@ public class QueryAIService {
     );
   }
 
+  public JsonNode generateRefundPlan(WorkOrder workorder) {
+    if (workorder == null) {
+      return null;
+    }
+    try {
+      Map<String, Object> requestBody = Map.of(
+        "ticket_id", workorder.getId(),
+        "title", workorder.getTitle(),
+        "description", workorder.getDescription(),
+        "owner_username", workorder.getOwnerUsername(),
+        "history", toReplyMessages(workorder.getReplies())
+      );
+      ResponseEntity<JsonNode> response = callAI("/ai/refund/plan", requestBody);
+      log.info("退款方案生成成功, ticketId: {}", workorder.getId());
+      return response.getBody();
+    } catch (Exception e) {
+      log.error("退款方案生成失败, ticketId: {}", workorder.getId(), e);
+      return null;
+    }
+  }
+
   private List<Map<String, String>> toReplyMessages(List<FeedbackReply> replies) {
     if (replies == null || replies.isEmpty()) {
       return List.of();

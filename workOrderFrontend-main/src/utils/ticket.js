@@ -65,6 +65,7 @@ export const TICKET_CATEGORY_OPTIONS = [
   { label: '功能需求', value: '功能需求' },
   { label: '投诉建议', value: '投诉建议' },
   { label: '账单问题', value: '账单问题' },
+  { label: '退款售后', value: '退款售后' },
   { label: '其他', value: '其他' }
 ]
 
@@ -77,6 +78,9 @@ export const TICKET_SERVICE_GROUP_META = {
   },
   BILLING_SERVICE: {
     label: '财务客服组'
+  },
+  AFTER_SALES: {
+    label: '售后客服组'
   }
 }
 

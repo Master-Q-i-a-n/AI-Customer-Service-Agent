@@ -7,6 +7,12 @@ from pathlib import Path
 from workOrderAI.evals.datasets import TASK_FILES, load_dataset
 
 
+SUITES = {
+    "core": ["classification", "reply_suggestion", "knowledge_qa"],
+    "refund": ["refund"],
+}
+
+
 async def collect_results(tasks: list[str], limit: int | None, skip_judge: bool) -> dict[str, list[dict]]:
     """逐任务执行样本并收集原始评测结果。"""
     from workOrderAI.evals.runner import run_case
@@ -79,7 +85,7 @@ def run_langsmith_from_results(results_by_task: dict[str, list[dict]], skip_judg
 def parse_args():
     """解析评测命令行参数。"""
     parser = argparse.ArgumentParser(description="Run work order AI evaluations.")
-    parser.add_argument("--suite", default="core", choices=["core"])
+    parser.add_argument("--suite", default="core", choices=list(SUITES))
     parser.add_argument("--mode", default="local", choices=["local", "langsmith", "both"])
     parser.add_argument("--task", default="all", choices=["all", *TASK_FILES.keys()])
     parser.add_argument("--limit", type=int)
@@ -93,7 +99,7 @@ def parse_args():
 def main():
     """根据命令行模式调度本地、LangSmith 或双端评测流程。"""
     args = parse_args()
-    tasks = list(TASK_FILES) if args.task == "all" else [args.task]
+    tasks = SUITES[args.suite] if args.task == "all" else [args.task]
     if args.mode == "langsmith":
         run_langsmith(tasks, sync_only=args.sync_only, skip_judge=args.skip_judge, experiment_prefix=args.experiment_prefix)
         return

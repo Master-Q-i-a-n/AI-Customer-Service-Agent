@@ -11,7 +11,7 @@ from typing import List, Optional
 # ==========================================
 class ClassifyResponse(BaseModel):
     """AI工单分类响应"""
-    problem_type: str                                   # 问题类型: 技术故障/产品咨询/功能需求/投诉建议/账单问题
+    problem_type: str                                   # 问题类型: 技术故障/产品咨询/功能需求/投诉建议/账单问题/退款售后
     priority: str                                       # 优先级: P0/P1/P2/P3
     user_sentiment: str                                 # 用户情绪: 正面/中性/负面/愤怒
     confidence_score: float                             # AI置信度 (0.0-1.0)

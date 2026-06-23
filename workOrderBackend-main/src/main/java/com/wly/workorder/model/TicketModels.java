@@ -37,6 +37,7 @@ public final class TicketModels {
     功能需求,
     投诉建议,
     账单问题,
+    退款售后,
     其他,
     UNKNOWN
   }
@@ -55,7 +56,8 @@ public final class TicketModels {
   public enum ServiceGroup {
     TECH_SUPPORT,
     PRODUCT_CONSULTING,
-    BILLING_SERVICE
+    BILLING_SERVICE,
+    AFTER_SALES
   }
 
   public static final HashMap<String, String> priorityMap = new HashMap<>(Map.of(

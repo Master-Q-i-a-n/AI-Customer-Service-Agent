@@ -300,6 +300,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useRoute, useRouter } from 'vue-router'
 import {
   ArrowDown,
   ArrowUp,
@@ -319,6 +320,7 @@ import csReplyQuill from '../components/biz/csReplyQuill.vue'
 import { uploadFile } from '../api/file'
 import { createFeedback, getFeedback, pageFeedback, replyFeedback } from '../api/feedback'
 import { sessionState } from '../store/session'
+import { buildRefundFeedbackDraft } from '../utils/order'
 import {
   buildReplyHtml,
   createUid,
@@ -337,6 +339,8 @@ import {
 
 const DRAFT_KEY = 'workorder.feedback.draft'
 
+const route = useRoute()
+const router = useRouter()
 const loading = ref(false)
 const detailLoading = ref(false)
 const createLoading = ref(false)
@@ -355,6 +359,7 @@ const replyHasContent = ref(false)
 const replyHistory = ref(null)
 const imageInputRef = ref(null)
 const attachmentInputRef = ref(null)
+const skipNextDraftRestore = ref(false)
 const replyForm = reactive({ content: '' })
 const createForm = reactive(createEmptyCreateForm())
 
@@ -405,6 +410,11 @@ watch(
 
 watch(createDialogVisible, visible => {
   if (!visible) {
+    return
+  }
+
+  if (skipNextDraftRestore.value) {
+    skipNextDraftRestore.value = false
     return
   }
 
@@ -556,6 +566,25 @@ function handleReplyEditorState(payload) {
 function openCreateDialog() {
   restoreDraftFromStorage()
   createDialogVisible.value = true
+}
+
+async function openRefundDraftFromQuery() {
+  if (route.query.intent !== 'refund') {
+    return
+  }
+
+  const draft = buildRefundFeedbackDraft(route.query.orderNo)
+  if (!draft) {
+    await router.replace({ path: '/feedback' })
+    return
+  }
+
+  // 订单退款入口生成的是一次性草稿，避免被之前保存在本地的普通反馈草稿覆盖。
+  clearDraftStorage()
+  Object.assign(createForm, createEmptyCreateForm(), draft)
+  skipNextDraftRestore.value = true
+  createDialogVisible.value = true
+  await router.replace({ path: '/feedback' })
 }
 
 function handleDialogClosed() {
@@ -782,6 +811,7 @@ function scrollRepliesToLatest() {
 
 onMounted(async () => {
   await loadFeedbackList()
+  await openRefundDraftFromQuery()
 })
 </script>
 

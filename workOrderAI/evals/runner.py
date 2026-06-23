@@ -25,6 +25,8 @@ async def run_case(task: str, case: dict, skip_judge: bool = False) -> dict:
         return await _run_reply_suggestion_case(case, skip_judge=skip_judge)
     if task == "knowledge_qa":
         return await _run_knowledge_case(case, skip_judge=skip_judge)
+    if task == "refund":
+        return await _run_refund_case(case)
     raise ValueError(f"unsupported eval task: {task}")
 
 
@@ -194,6 +196,45 @@ def _safe_judge_reply(
         return judge_reply(input_payload, answer, tool_trace, evidence_score)
     except Exception as exc:
         return {"passed": False, "average_score": 0.0, "error": str(exc)}
+
+
+async def _run_refund_case(case: dict) -> dict:
+    from workOrderAI.agent.agent_context import reset_current_username, set_current_username
+    from workOrderAI.app.model.refund import RefundPlanRequest
+    from workOrderAI.app.service.refund_agent_graph import RefundAgentGraph
+    from workOrderAI.evals.evaluators.refund import score_refund_result
+
+    started_at = time.perf_counter()
+    request = RefundPlanRequest(**case["input"])
+    username_token = set_current_username(request.owner_username)
+    trace_token = start_tool_trace()
+    try:
+        response = await RefundAgentGraph().run(request)
+        tool_trace = get_tool_trace()
+    finally:
+        reset_tool_trace(trace_token)
+        reset_current_username(username_token)
+    actual = response.model_dump(mode="json")
+    rule_score = score_refund_result(
+        actual,
+        case["expected"],
+        tool_trace,
+        case.get("required_tools", []),
+    )
+    notes = [name for name, passed in rule_score.items() if isinstance(passed, bool) and not passed]
+    return {
+        "id": case["id"],
+        "task": "refund",
+        "input": case["input"],
+        "expected": case["expected"],
+        "actual": actual,
+        "tool_trace": tool_trace,
+        "rule_score": rule_score,
+        "passed": rule_score["passed"],
+        "score": rule_score["score"],
+        "latency_seconds": time.perf_counter() - started_at,
+        "notes": notes,
+    }
 
 
 def _safe_judge_knowledge(question: str, answer: str, sources: list[dict]) -> dict:

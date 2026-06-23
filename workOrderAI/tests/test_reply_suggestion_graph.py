@@ -32,10 +32,17 @@ class ReplySuggestionGraphRouteTests(unittest.TestCase):
         self.assertEqual(graph._classify_route_by_rules("老板，我的机器人坏了"), "FAULT_DIAGNOSIS")
         self.assertEqual(graph._classify_route_by_rules("你们公司老板是谁"), "OUT_OF_SCOPE")
 
+    def test_refund_language_routes_to_refund_request(self):
+        graph = ReplySuggestionGraph.__new__(ReplySuggestionGraph)
+
+        self.assertEqual(graph._classify_route_by_rules("订单还没发货，我想退款"), "REFUND_REQUEST")
+        self.assertEqual(graph._classify_route_by_rules("昨天收到的商品不合适，怎么退货"), "REFUND_REQUEST")
+
     def test_route_to_branch_keeps_valid_routes(self):
         graph = ReplySuggestionGraph.__new__(ReplySuggestionGraph)
 
         self.assertEqual(graph.route_to_branch({"route": "USER_RECORD"}), "USER_RECORD")
+        self.assertEqual(graph.route_to_branch({"route": "REFUND_REQUEST"}), "REFUND_REQUEST")
         self.assertEqual(graph.route_to_branch({"route": "BAD_ROUTE"}), "DIRECT_KNOWLEDGE")
 
 

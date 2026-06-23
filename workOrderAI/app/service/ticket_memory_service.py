@@ -5,6 +5,7 @@ from datetime import datetime
 
 from workOrderAI.app.model.database import get_db_connection
 from workOrderAI.app.model.request import ReplyMessage, ReplySuggestRequest
+from workOrderAI.app.service.memory_sanitizer import sanitize_memory_text
 from workOrderAI.models.factory import router_model
 from workOrderAI.utils.config import config
 from workOrderAI.utils.logger_handler import logger
@@ -138,6 +139,7 @@ class TicketMemoryService:
 4. 合并重复事实和重复步骤，summary 控制在200字以内。
 5. unresolved 只保留仍需确认或尚未解决的问题。
 6. 只输出严格 JSON。
+7. 退款记忆只保留用户确认的订单、原因和待办，不记录金额、支付交易号或完整工具结果。
 
 工单标题：{work_order.title}
 工单描述：{work_order.description}
@@ -152,15 +154,21 @@ class TicketMemoryService:
 {{"summary":"","confirmed_facts":[],"attempted_steps":[],"unresolved":[]}}"""
 
     def _normalize_memory(self, payload: dict, existing: dict) -> dict:
-        summary = str(payload.get("summary") or existing.get("summary") or "").strip()[:200]
-        facts = self._dedupe_strings(payload.get("confirmed_facts", existing.get("confirmed_facts", [])))
-        unresolved = self._dedupe_strings(payload.get("unresolved", existing.get("unresolved", [])))
+        summary = sanitize_memory_text(payload.get("summary") or existing.get("summary") or "")[:200]
+        facts = self._dedupe_strings(
+            sanitize_memory_text(item)
+            for item in payload.get("confirmed_facts", existing.get("confirmed_facts", []))
+        )
+        unresolved = self._dedupe_strings(
+            sanitize_memory_text(item)
+            for item in payload.get("unresolved", existing.get("unresolved", []))
+        )
         attempted_steps = []
         seen_actions = set()
         for item in payload.get("attempted_steps", existing.get("attempted_steps", [])) or []:
             if not isinstance(item, dict):
                 continue
-            action = str(item.get("action") or "").strip()
+            action = sanitize_memory_text(item.get("action"))
             if not action or action in seen_actions:
                 continue
             seen_actions.add(action)
@@ -168,7 +176,7 @@ class TicketMemoryService:
             attempted_steps.append(
                 {
                     "action": action,
-                    "result": str(item.get("result") or "").strip(),
+                    "result": sanitize_memory_text(item.get("result")),
                     "status": status if status in {"SUCCESS", "FAILED", "UNKNOWN"} else "UNKNOWN",
                 }
             )
@@ -288,7 +296,7 @@ class TicketMemoryService:
             return []
 
     def _dedupe_strings(self, values: object) -> list[str]:
-        if not isinstance(values, list):
+        if isinstance(values, (str, bytes, dict)) or not hasattr(values, "__iter__"):
             return []
         result = []
         seen = set()

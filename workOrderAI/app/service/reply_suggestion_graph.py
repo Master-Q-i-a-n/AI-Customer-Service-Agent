@@ -18,9 +18,9 @@ from workOrderAI.utils.logger_handler import logger
 from workOrderAI.utils.prompt_builder import AGENT_PROMPT
 
 
-RouteName = Literal["DIRECT_KNOWLEDGE", "FAULT_DIAGNOSIS", "USER_RECORD", "CLARIFY", "OUT_OF_SCOPE"]
+RouteName = Literal["DIRECT_KNOWLEDGE", "FAULT_DIAGNOSIS", "USER_RECORD", "REFUND_REQUEST", "CLARIFY", "OUT_OF_SCOPE"]
 CheckStatus = Literal["PASS", "REVISE", "ESCALATE"]
-VALID_ROUTES = {"DIRECT_KNOWLEDGE", "FAULT_DIAGNOSIS", "USER_RECORD", "CLARIFY", "OUT_OF_SCOPE"}
+VALID_ROUTES = {"DIRECT_KNOWLEDGE", "FAULT_DIAGNOSIS", "USER_RECORD", "REFUND_REQUEST", "CLARIFY", "OUT_OF_SCOPE"}
 ROUTER_CONFIDENCE_THRESHOLD = 0.6
 
 
@@ -81,6 +81,7 @@ class ReplySuggestionGraph:
         graph.add_node("direct_knowledge_branch", self.run_direct_knowledge_branch)
         graph.add_node("fault_diagnosis_branch", self.run_fault_branch)
         graph.add_node("user_record_branch", self.run_user_record_branch)
+        graph.add_node("refund_request_branch", self.refund_request_branch)
         graph.add_node("clarify_branch", self.clarify_branch)
         graph.add_node("out_of_scope_branch", self.out_of_scope_branch)
         graph.add_node("generate_reply", self.generate_reply)
@@ -99,6 +100,7 @@ class ReplySuggestionGraph:
                 "DIRECT_KNOWLEDGE": "direct_knowledge_branch",
                 "FAULT_DIAGNOSIS": "fault_diagnosis_branch",
                 "USER_RECORD": "user_record_branch",
+                "REFUND_REQUEST": "refund_request_branch",
                 "CLARIFY": "clarify_branch",
                 "OUT_OF_SCOPE": "out_of_scope_branch",
             },
@@ -106,6 +108,7 @@ class ReplySuggestionGraph:
         graph.add_edge("direct_knowledge_branch", "generate_reply")
         graph.add_edge("fault_diagnosis_branch", "generate_reply")
         graph.add_edge("user_record_branch", "generate_reply")
+        graph.add_edge("refund_request_branch", "generate_reply")
         graph.add_edge("clarify_branch", "generate_reply")
         graph.add_edge("out_of_scope_branch", "generate_reply")
         graph.add_edge("generate_reply", "self_check")
@@ -145,7 +148,7 @@ class ReplySuggestionGraph:
 
     async def load_user_profile(self, state: ReplySuggestionState) -> dict:
         route = state.get("route") or "DIRECT_KNOWLEDGE"
-        if route in {"CLARIFY", "OUT_OF_SCOPE"}:
+        if route in {"REFUND_REQUEST", "CLARIFY", "OUT_OF_SCOPE"}:
             return {"user_profile": []}
         owner_username = str(state["work_order"].owner_username or "").strip()
         if not owner_username:
@@ -196,6 +199,13 @@ class ReplySuggestionGraph:
         return {
             "branch_result": "当前问题超出扫地/扫拖机器人知识库和工单处理范围，应礼貌说明无法基于现有资料回答。",
             "branch_data": {"route_action": "refuse"},
+            "rag_sources": [],
+        }
+
+    async def refund_request_branch(self, state: ReplySuggestionState) -> dict:
+        return {
+            "branch_result": "已识别为退款或退货诉求，应进入退款审核工作流核实订单、政策、资格和金额。",
+            "branch_data": {"route_action": "refund_analysis"},
             "rag_sources": [],
         }
 
@@ -255,6 +265,8 @@ class ReplySuggestionGraph:
             draft = "您好，当前问题超出了现有扫地/扫拖机器人知识库和工单处理范围。为了避免给您不准确的信息，建议您联系人工客服进一步确认。"
         elif route == "CLARIFY":
             draft = "您好，为了更准确地帮您排查，请您补充一下设备型号、具体异常现象、出现时间，以及是否有截图或报错提示。收到信息后我们会继续协助处理。"
+        elif route == "REFUND_REQUEST":
+            draft = "您好，已收到您的退款或退货诉求。客服将先核实订单、物流状态、退款政策和可退金额，审核通过前不会执行退款。"
         else:
             draft = await self._generate_reply_text(state)
 
@@ -472,6 +484,8 @@ class ReplySuggestionGraph:
         normalized = str(text or "").lower()
         if self._is_too_vague(normalized):
             return "CLARIFY"
+        if self._contains_any(normalized, ["退款", "退货", "退钱", "取消订单", "不想要了", "申请退"]):
+            return "REFUND_REQUEST"
         if self._has_user_record_intent(normalized):
             return "USER_RECORD"
         if self._contains_any(normalized, ["坏", "故障", "不能", "无法", "异常", "报错", "不出水", "回不了充", "乱跑", "打转", "卡住", "失灵"]):
@@ -498,11 +512,12 @@ class ReplySuggestionGraph:
         return f"""你是智能工单回复建议的路由器。请只根据当前工单内容判断应走哪条处理分支。
 
 可选 route：
-1. USER_RECORD：用户使用记录、耗材剩余、清洁效率、相对时间记录查询，例如去年、本月、最近、上个月。
-2. FAULT_DIAGNOSIS：设备异常、故障、无法工作、报错、排障，例如不出水、回不了充、乱跑、卡住。
-3. DIRECT_KNOWLEDGE：产品知识、保养、功能说明、一般建议。
-4. CLARIFY：信息不足，需要先追问关键现象、设备型号、截图或报错。
-5. OUT_OF_SCOPE：不属于扫地/扫拖机器人客服范围的问题。
+1. REFUND_REQUEST：明确申请退款、退货、取消订单或查询退款进度。
+2. USER_RECORD：用户使用记录、耗材剩余、清洁效率、相对时间记录查询，例如去年、本月、最近、上个月。
+3. FAULT_DIAGNOSIS：设备异常、故障、无法工作、报错、排障，例如不出水、回不了充、乱跑、卡住。
+4. DIRECT_KNOWLEDGE：产品知识、保养、功能说明、一般建议。
+5. CLARIFY：信息不足，需要先追问关键现象、设备型号、截图或报错。
+6. OUT_OF_SCOPE：不属于扫地/扫拖机器人客服范围的问题。
 
 判断要求：
 - 如果用户同时提到“使用记录”和“注意事项/建议”，优先 USER_RECORD，因为需要先查记录。

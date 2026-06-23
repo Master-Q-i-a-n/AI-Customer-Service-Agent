@@ -22,6 +22,8 @@ def _route_service_group(problem_type: str) -> str:
         return "TECH_SUPPORT"
     if problem_type == "账单问题":
         return "BILLING_SERVICE"
+    if problem_type == "退款售后":
+        return "AFTER_SALES"
     return "PRODUCT_CONSULTING"
 
 @api.post('/classify', response_model=ClassifyResponse)
