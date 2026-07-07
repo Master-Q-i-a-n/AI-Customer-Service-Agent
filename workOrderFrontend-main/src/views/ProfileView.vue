@@ -91,7 +91,7 @@
             <p class="page-header__eyebrow">账号注销</p>
             <h3>删除当前账号</h3>
             <div class="profile-card__meta">
-              注销后当前账号将无法再登录，历史反馈记录会保留在工单系统中。
+              注销后当前账号将无法再登录，历史反馈记录会保留在智能客服系统中。
             </div>
           </div>
           <el-button :loading="accountDeleting" type="danger" plain @click="deleteCurrentAccount">

@@ -12,7 +12,6 @@ public class WorkOrderAIProperties {
 
   private AIService aiService = new AIService();
   private AIClassification aiClassification = new AIClassification();
-  private AIQualityCheck aiQualityCheck = new AIQualityCheck();
   private AIReplySuggestion aiReplySuggestion = new AIReplySuggestion();
   private KnowledgeBase knowledgeBase = new KnowledgeBase();
 
@@ -32,15 +31,6 @@ public class WorkOrderAIProperties {
     private List<String> problemTypes = List.of("技术故障", "产品咨询", "功能需求", "投诉建议", "账单问题");
     private List<String> priorities = List.of("P0", "P1", "P2", "P3");
     private List<String> sentiments = List.of("正面", "中性", "负面", "愤怒");
-  }
-
-  @Data
-  public static class AIQualityCheck {
-    private boolean enabled = true;
-    private boolean triggerOnReply = true;
-    private List<String> autoTriggerRoles = List.of("admin", "supervisor");
-    private int discrepancyThreshold = 20;
-    private boolean reviewRequired = true;
   }
 
   @Data

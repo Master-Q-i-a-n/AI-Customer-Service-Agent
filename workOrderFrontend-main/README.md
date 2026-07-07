@@ -1,6 +1,6 @@
-# Work Order Frontend
+# AI-Customer-Service-Agent Frontend
 
-这是工单系统的前端项目，基于 Vue 3 + Vite。
+这是 AI-Customer-Service-Agent 的前端项目，基于 Vue 3 + Vite。
 
 后端仓库在这里：[Work Order Backend](https://github.com/mxnican/workOrderBackend)
 

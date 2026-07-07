@@ -44,6 +44,7 @@ public class DatabaseSeeder implements CommandLineRunner {
     ensureCaseMemoryTable();
     ensureTicketMemoryTable();
     ensureUserMemoryTable();
+    ensureAssistantTables();
     ensureCommerceRefundTables();
 
     Integer userCount = jdbcTemplate.queryForObject("select count(*) from wo_user", Integer.class);
@@ -540,6 +541,39 @@ public class DatabaseSeeder implements CommandLineRunner {
         updated_at varchar(19) not null,
         unique key uk_user_memory_source (owner_username, memory_key, source_reply_id, extraction_batch_id),
         key idx_user_memory_active (owner_username, status, memory_key)
+      )
+      """
+    );
+  }
+
+  private void ensureAssistantTables() {
+    jdbcTemplate.execute(
+      """
+      create table if not exists wo_assistant_session (
+        id varchar(36) primary key,
+        owner_username varchar(64) not null,
+        status varchar(32) not null,
+        route varchar(64) not null default '',
+        summary text not null,
+        pending_ticket_draft_json text not null,
+        ticket_id varchar(36) not null default '',
+        created_at varchar(19) not null,
+        updated_at varchar(19) not null,
+        key idx_assistant_session_owner (owner_username, updated_at)
+      )
+      """
+    );
+    jdbcTemplate.execute(
+      """
+      create table if not exists wo_assistant_message (
+        id varchar(36) primary key,
+        session_id varchar(36) not null,
+        role varchar(32) not null,
+        content text not null,
+        action varchar(32) not null default '',
+        metadata_json text not null,
+        created_at varchar(19) not null,
+        key idx_assistant_message_session (session_id, created_at)
       )
       """
     );

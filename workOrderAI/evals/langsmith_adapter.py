@@ -20,10 +20,10 @@ from workOrderAI.evals.scorers import (
     score_tool_usage,
 )
 from workOrderAI.utils.config import config
-from workOrderAI.utils.prompt_builder import CLASSIFICATION_SYSTEM_PROMPT, RAG_SUMMARIZE_PROMPT, REPLY_SUGGESTION_AGENT_PROMPT
+from workOrderAI.utils.prompt_builder import CLASSIFICATION_SYSTEM_PROMPT, RAG_SUMMARIZE_PROMPT, REPLY_SUGGESTION_SYSTEM_PROMPT
 
 
-DATASET_PREFIX = "workorder-agent"
+DATASET_PREFIX = "ai-customer-service-agent"
 
 
 def dataset_name(task: str) -> str:
@@ -38,7 +38,7 @@ def sync_dataset(task: str, client: Client | None = None) -> str:
     try:
         client.read_dataset(dataset_name=name)
     except Exception:
-        client.create_dataset(name, description=f"Work order agent {task} evaluation dataset.")
+        client.create_dataset(name, description=f"AI customer service agent {task} evaluation dataset.")
 
     examples = []
     for case in load_dataset(task):
@@ -351,7 +351,7 @@ def _git_commit() -> str:
 def _prompt_fingerprint(task: str) -> str:
     prompt_map = {
         "classification": CLASSIFICATION_SYSTEM_PROMPT,
-        "reply_suggestion": REPLY_SUGGESTION_AGENT_PROMPT,
+        "reply_suggestion": REPLY_SUGGESTION_SYSTEM_PROMPT,
         "knowledge_qa": RAG_SUMMARIZE_PROMPT,
     }
     payload = prompt_map.get(task, "")

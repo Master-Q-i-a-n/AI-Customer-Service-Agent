@@ -1,4 +1,4 @@
-from workOrderAI.app.api import case_memory, classify, knowledge, refund, reply_suggest
+from workOrderAI.app.api import case_memory, classify, customer_assistant, knowledge, refund, reply_suggest
 from fastapi import FastAPI
 from workOrderAI.utils.config import config
 
@@ -8,17 +8,18 @@ app.include_router(knowledge.api)
 app.include_router(reply_suggest.api)
 app.include_router(case_memory.api)
 app.include_router(refund.api)
+app.include_router(customer_assistant.api)
 
 @app.get("/health")
 def health_check():
     """健康检查接口"""
-    return {"status": "ok", "service": "workorder-ai"}
+    return {"status": "ok", "service": "ai-customer-service-agent-ai"}
 
 @app.get("/")
 def root():
     """根路径，返回服务信息"""
     return {
-        "service": "工单系统AI服务",
+        "service": "AI-Customer-Service-Agent AI服务",
         "version": "1.0.0",
         "docs": "/docs"
     }

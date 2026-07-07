@@ -2,8 +2,10 @@ import { createRouter, createWebHistory } from 'vue-router'
 import LoginView from '../views/LoginView.vue'
 import DashboardView from '../views/DashboardView.vue'
 import FeedbackView from '../views/FeedbackView.vue'
+import AssistantView from '../views/AssistantView.vue'
 import ProfileView from '../views/ProfileView.vue'
 import WorkOrderView from '../views/WorkOrderView.vue'
+import RefundReviewView from '../views/RefundReviewView.vue'
 import KnowledgeView from '../views/KnowledgeView.vue'
 import OrderView from '../views/OrderView.vue'
 import { getDefaultRouteByRole, normalizeRole } from '../utils/auth'
@@ -15,9 +17,11 @@ const routes = [
   { path: '/dashboard', component: DashboardView },
   { path: '/knowledge', component: KnowledgeView },
   { path: '/profile', component: ProfileView },
+  { path: '/assistant', component: AssistantView, meta: { roles: ['user'] } },
   { path: '/feedback', component: FeedbackView, meta: { roles: ['user'] } },
   { path: '/orders', component: OrderView, meta: { roles: ['user'] } },
-  { path: '/work-order', component: WorkOrderView, meta: { roles: ['admin'] } }
+  { path: '/work-order', component: WorkOrderView, meta: { roles: ['admin'] } },
+  { path: '/refund-review', component: RefundReviewView, meta: { roles: ['admin'] } }
 ]
 
 const router = createRouter({

@@ -27,34 +27,6 @@ class ClassifyRequest(BaseModel):
 
 
 # ==========================================
-# AI质检接口请求模型
-# ==========================================
-class TicketContext(BaseModel):
-    """工单上下文信息"""
-    title: str                                          # 工单标题
-    description: str                                    # 工单描述
-    all_replies: List[ReplyMessage]                     # 所有回复记录
-
-
-class QualityCheckRequest(BaseModel):
-    """AI质检评分请求"""
-    reply_id: str                                       # 客服回复ID
-    ticket_id: str                                      # 工单ID
-    ticket_context: TicketContext                       # 工单上下文
-    service_reply_content: str                          # 客服回复内容
-
-
-# ==========================================
-# 质检审核请求模型
-# ==========================================
-class QualityReviewRequest(BaseModel):
-    """主管审核质检请求"""
-    action: str                                         # 操作: approve(通过)/revised(修改)
-    human_total_score: Optional[float] = None           # 人工总分(action=revised时必填)
-    review_notes: Optional[str] = None                  # 审核备注
-
-
-# ==========================================
 # AI回复建议接口请求模型
 # ==========================================
 class ReplySuggestRequest(BaseModel):

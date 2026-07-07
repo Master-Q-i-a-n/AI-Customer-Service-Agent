@@ -78,28 +78,6 @@ public class QueryAIService {
     }
   }
 
-  public CompletableFuture<JsonNode> qualityCheckAsync(String replyId, String ticketId, Map<String, Object> ticketContext, String serviceReplyContent) {
-    if (!properties.getAiQualityCheck().isEnabled() || !properties.getAiQualityCheck().isTriggerOnReply()) {
-      return CompletableFuture.completedFuture(null);
-    }
-    return CompletableFuture.supplyAsync(() -> {
-      try {
-        Map<String, Object> requestBody = Map.of(
-          "reply_id", replyId,
-          "ticket_id", ticketId,
-          "ticket_context", ticketContext,
-          "service_reply_content", serviceReplyContent
-        );
-        ResponseEntity<JsonNode> response = callAI("/api/v1/quality-check", requestBody);
-        log.info("AI质检成功, replyId: {}", replyId);
-        return response.getBody();
-      } catch (Exception e) {
-        log.error("AI质检失败, replyId: {}", replyId, e);
-        return null;
-      }
-    }, asyncExecutor);
-  }
-
   public JsonNode suggestReply(WorkOrder workorder) {
     if (!properties.getAiReplySuggestion().isEnabled()) {
       return null;
@@ -148,20 +126,6 @@ public class QueryAIService {
         log.error("历史案例沉淀失败, ticketId: {}", workorder.getId(), e);
       }
     }, asyncExecutor);
-  }
-
-  public JsonNode knowledgeQA(String question) {
-    if (!properties.getKnowledgeBase().isEnabled()) {
-      return null;
-    }
-    try {
-      Map<String, Object> requestBody = Map.of("question", question);
-      ResponseEntity<JsonNode> response = callAI("/api/v1/knowledge/qa", requestBody);
-      return response.getBody();
-    } catch (Exception e) {
-      log.error("知识库问答失败", e);
-      return null;
-    }
   }
 
   public KnowledgeAnswer askKnowledge(String question) {
@@ -291,6 +255,22 @@ public class QueryAIService {
       "replies", replies,
       "update_category", updateCategory
     );
+  }
+
+  public JsonNode customerAssistantChat(String sessionId, String ownerUsername, String message, List<Map<String, String>> history) {
+    try {
+      Map<String, Object> requestBody = Map.of(
+        "session_id", sessionId,
+        "owner_username", ownerUsername,
+        "message", message,
+        "history", history == null ? List.of() : history
+      );
+      ResponseEntity<JsonNode> response = callAI("/ai/customer-assistant/chat", requestBody);
+      return response.getBody();
+    } catch (Exception e) {
+      log.error("用户侧AI客服调用失败, sessionId: {}", sessionId, e);
+      return null;
+    }
   }
 
   public JsonNode generateRefundPlan(WorkOrder workorder) {

@@ -20,6 +20,11 @@ def get_config():
     load_dotenv()
     with open(get_abs_path("config.yaml"), "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
+    _set_if_present(config, ["dashscope", "api_key"], "DASHSCOPE_API_KEY")
+    dashscope_api_key = str(config.get("dashscope", {}).get("api_key") or "").strip()
+    if dashscope_api_key:
+        # DashScopeRerank 当前版本只稳定读取环境变量，这里把配置同步给 SDK。
+        os.environ["DASHSCOPE_API_KEY"] = dashscope_api_key
     _set_if_present(config, ["MySQL", "host"], "AI_MYSQL_HOST")
     _set_if_present(config, ["MySQL", "port"], "AI_MYSQL_PORT", int)
     _set_if_present(config, ["MySQL", "user"], "AI_MYSQL_USER")

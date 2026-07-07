@@ -16,6 +16,12 @@ from workOrderAI.utils.config import config
 load_dotenv()
 
 
+def _dashscope_api_key() -> str | None:
+    """优先使用 config/env 中的 DashScope Key；为空时交给 SDK 自行校验。"""
+    value = str(config.get("dashscope", {}).get("api_key") or "").strip()
+    return value or None
+
+
 class BaseModelFactory(ABC):
     """基础模型工厂"""
 
@@ -38,13 +44,17 @@ class ChatModelFactory(BaseModelFactory):
             model=self.model_name,
             streaming=False,
             top_p=self.top_p,
+            api_key=_dashscope_api_key(),
             model_kwargs=self.model_kwargs,
         )
 
 
 class EmbeddingsFactory(BaseModelFactory):
     def generator(self) -> Optional[Embeddings | BaseChatModel]:
-        return DashScopeEmbeddings(model=config['model']['embedding_model'])
+        return DashScopeEmbeddings(
+            model=config['model']['embedding_model'],
+            dashscope_api_key=_dashscope_api_key(),
+        )
 
 
 

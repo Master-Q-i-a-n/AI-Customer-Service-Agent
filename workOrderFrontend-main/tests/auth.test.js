@@ -5,6 +5,6 @@ assert.equal(normalizeRole(undefined), 'guest')
 assert.equal(normalizeRole('admin'), 'admin')
 assert.equal(normalizeRole('USER'), 'user')
 
-assert.equal(getDefaultRouteByRole('user'), '/feedback')
+assert.equal(getDefaultRouteByRole('user'), '/assistant')
 assert.equal(getDefaultRouteByRole('admin'), '/work-order')
 assert.equal(getDefaultRouteByRole('guest'), '/login')

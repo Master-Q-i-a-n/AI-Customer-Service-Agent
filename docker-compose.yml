@@ -1,7 +1,7 @@
 services:
   mysql:
     image: mysql:8.0
-    container_name: workorder-mysql
+    container_name: ai-customer-service-agent-mysql
     restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-123456}
@@ -23,14 +23,14 @@ services:
     build:
       context: .
       dockerfile: workOrderAI/Dockerfile
-    container_name: workorder-ai
+    container_name: ai-customer-service-agent-ai
     restart: unless-stopped
     environment:
       DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
       LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
       LANGSMITH_TRACING: ${LANGSMITH_TRACING:-false}
       LANGSMITH_ENDPOINT: ${LANGSMITH_ENDPOINT:-https://api.smith.langchain.com}
-      LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-workorder-agent}
+      LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-ai-customer-service-agent}
       AI_MYSQL_HOST: mysql
       AI_MYSQL_PORT: 3306
       AI_MYSQL_USER: root
@@ -51,7 +51,7 @@ services:
   backend:
     build:
       context: ./workOrderBackend-main
-    container_name: workorder-backend
+    container_name: ai-customer-service-agent-backend
     restart: unless-stopped
     environment:
       WORKORDER_DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-work_order}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
@@ -74,7 +74,7 @@ services:
   frontend:
     build:
       context: ./workOrderFrontend-main
-    container_name: workorder-frontend
+    container_name: ai-customer-service-agent-frontend
     restart: unless-stopped
     ports:
       - "${FRONTEND_HOST_PORT:-5173}:80"

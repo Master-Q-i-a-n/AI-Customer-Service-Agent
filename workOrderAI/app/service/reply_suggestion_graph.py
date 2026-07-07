@@ -15,7 +15,6 @@ from workOrderAI.app.service.ticket_memory_service import TicketMemoryService
 from workOrderAI.app.service.user_memory_service import UserMemoryService, format_user_profile
 from workOrderAI.models.factory import chat_model, router_model
 from workOrderAI.utils.logger_handler import logger
-from workOrderAI.utils.prompt_builder import AGENT_PROMPT
 
 
 RouteName = Literal["DIRECT_KNOWLEDGE", "FAULT_DIAGNOSIS", "USER_RECORD", "REFUND_REQUEST", "CLARIFY", "OUT_OF_SCOPE"]
@@ -66,7 +65,7 @@ class ReplySuggestionGraph:
         self.user_memory_service = UserMemoryService()
         self.user_record_agent = create_agent(
             model=chat_model,
-            system_prompt=AGENT_PROMPT,
+            system_prompt=USER_RECORD_AGENT_PROMPT,
             tools=[get_time_now, fetch_current_user_records, rag_summarize],
             middleware=get_middleware(),
         )

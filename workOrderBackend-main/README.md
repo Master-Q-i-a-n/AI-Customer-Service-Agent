@@ -1,6 +1,6 @@
-# Work Order Backend
+# AI-Customer-Service-Agent Backend
 
-这是工单系统的后端项目，基于 Spring Boot + MySQL。
+这是 AI-Customer-Service-Agent 的后端项目，基于 Spring Boot + MySQL。
 
 前端仓库在这里：[Work Order Frontend](https://github.com/mxnican/workOrderFrontend)
 

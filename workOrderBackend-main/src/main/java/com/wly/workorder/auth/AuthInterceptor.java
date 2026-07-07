@@ -43,6 +43,10 @@ public class AuthInterceptor implements HandlerInterceptor {
         writeError(response, ApiResponse.withCode(403, "forbidden", null));
         return false;
       }
+      if (path.startsWith("/api/assistant") && session.getRole() != AuthRole.USER) {
+        writeError(response, ApiResponse.withCode(403, "user access required", null));
+        return false;
+      }
       AuthContext.set(session);
       return true;
     } catch (AuthException ex) {

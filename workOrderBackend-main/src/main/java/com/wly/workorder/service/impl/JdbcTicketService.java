@@ -60,11 +60,33 @@ public class JdbcTicketService implements TicketService {
   @Override
   @Transactional
   public Feedback createFeedback(CreateFeedbackRequest request) {
+    Feedback feedback = createFeedbackInternal(
+      request,
+      TicketCategory.UNKNOWN,
+      ServiceGroup.PRODUCT_CONSULTING
+    );
+    queryAIService.classifyTicketAsync(feedback.getId(), request.getTitle(), request.getDescription(), List.of(), true);
+    return feedback;
+  }
+
+  @Override
+  @Transactional
+  public Feedback createFeedbackFromAssistant(String title, String description, TicketCategory category, ServiceGroup serviceGroup) {
+    CreateFeedbackRequest request = new CreateFeedbackRequest();
+    request.setTitle(title);
+    request.setDescription(description);
+    return createFeedbackInternal(
+      request,
+      category == null ? TicketCategory.其他 : category,
+      serviceGroup == null ? ServiceGroup.PRODUCT_CONSULTING : serviceGroup
+    );
+  }
+
+  private Feedback createFeedbackInternal(CreateFeedbackRequest request, TicketCategory category, ServiceGroup serviceGroup) {
     AuthSession session = AuthContext.require();
     String id = "fb-" + UUID.randomUUID().toString().substring(0, 8);
     String code = nextCode("FB-");
     String now = now();
-    TicketCategory category = TicketCategory.UNKNOWN;
     TicketPriority priority = TicketPriority.UNKNOWN;
     TicketEmotion emotion = TicketEmotion.UNKNOWN;
     String imagesJson = writeJson(request.getImages() == null ? List.of() : request.getImages());
@@ -72,11 +94,9 @@ public class JdbcTicketService implements TicketService {
 
     jdbcTemplate.update(
       "insert into wo_feedback (id, code, title, description, category, priority, emotion, status, service_group, owner_username, account_name, assignee, images_json, attachments_json, created_at, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      id, code, request.getTitle(), request.getDescription(), category.name(), priority.name(), emotion.name(), TicketStatus.PENDING.name(), ServiceGroup.PRODUCT_CONSULTING.name(), session.getUsername(),
+      id, code, request.getTitle(), request.getDescription(), category.name(), priority.name(), emotion.name(), TicketStatus.PENDING.name(), serviceGroup.name(), session.getUsername(),
       defaultString(request.getAccountName(), session.getDisplayName()), "", imagesJson, attachmentsJson, now, now
     );
-
-    queryAIService.classifyTicketAsync(id, request.getTitle(), request.getDescription(), List.of(), true);
 
     return getFeedbackById(id);
   }

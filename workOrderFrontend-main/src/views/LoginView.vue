@@ -2,7 +2,7 @@
   <section class="login-screen">
     <div class="login-panel">
       <div class="login-panel__copy">
-        <p class="eyebrow">工单系统</p>
+        <p class="eyebrow">AI-Customer-Service-Agent</p>
         <h1>登录后继续使用</h1>
         <p class="lead">
           系统可使用演示账号登录，也可以注册普通用户或管理员账号。

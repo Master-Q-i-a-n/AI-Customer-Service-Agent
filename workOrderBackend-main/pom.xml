@@ -12,10 +12,10 @@
   </parent>
 
   <groupId>com.wly</groupId>
-  <artifactId>work-order-backend</artifactId>
+  <artifactId>ai-customer-service-agent-backend</artifactId>
   <version>0.0.1-SNAPSHOT</version>
-  <name>work-order-backend</name>
-  <description>Work order system backend</description>
+  <name>ai-customer-service-agent-backend</name>
+  <description>AI customer service agent backend</description>
 
   <properties>
     <java.version>17</java.version>

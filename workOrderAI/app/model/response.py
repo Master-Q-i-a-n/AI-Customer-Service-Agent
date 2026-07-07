@@ -19,33 +19,6 @@ class ClassifyResponse(BaseModel):
 
 
 # ==========================================
-# AI质检接口响应模型
-# ==========================================
-class QualityCheckResponse(BaseModel):
-    """AI质检评分响应"""
-    inspection_id: str                                  # 质检记录ID
-    ai_total_score: float                               # AI总分 (0-100)
-    ai_problem_understanding: float                     # AI评分-问题理解 (0-25)
-    ai_solution: float                                  # AI评分-解决方案 (0-40)
-    ai_info_accuracy: float                             # AI评分-信息准确 (0-20)
-    ai_service_attitude: float                          # AI评分-服务态度 (0-15)
-    ai_reasoning: str                                   # AI评分依据
-    improvement_suggestions: str                        # AI改进建议
-    discrepancy_flag: bool                              # 差异标记 (AI与人工分差>20)
-
-
-# ==========================================
-# 质检审核响应模型
-# ==========================================
-class QualityReviewResponse(BaseModel):
-    """质检审核响应"""
-    inspection_id: str                                  # 质检记录ID
-    final_score: float                                  # 最终确认分数
-    review_status: str                                  # 审核状态: pending/approved/revised
-    discrepancy_flag: bool                              # 差异标记
-
-
-# ==========================================
 # 知识库引用来源模型
 # ==========================================
 class SourceDocument(BaseModel):

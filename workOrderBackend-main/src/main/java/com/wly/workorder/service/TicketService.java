@@ -10,6 +10,8 @@ public interface TicketService {
 
   Feedback createFeedback(CreateFeedbackRequest request);
 
+  Feedback createFeedbackFromAssistant(String title, String description, TicketCategory category, ServiceGroup serviceGroup);
+
   Feedback replyFeedback(String id, ReplyFeedbackRequest request);
 
   PageResult<WorkOrder> pageWorkOrders(String keyword, TicketCategory category, TicketPriority priority, TicketStatus status, ServiceGroup serviceGroup, int pageNum, int pageSize);

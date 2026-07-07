@@ -11,7 +11,7 @@ export function normalizeRole(value) {
 export function getDefaultRouteByRole(role) {
   const normalized = normalizeRole(role)
   if (normalized === 'user') {
-    return '/feedback'
+    return '/assistant'
   }
   if (normalized === 'admin') {
     return '/work-order'

@@ -1,6 +1,9 @@
 import unittest
+import os
 
 from langchain_community.chat_models.tongyi import ChatTongyi
+
+os.environ.setdefault("DASHSCOPE_API_KEY", "test")
 
 from workOrderAI.models.factory import ChatModelFactory, judge_model, reranker_model, router_model
 from workOrderAI.utils.config import config

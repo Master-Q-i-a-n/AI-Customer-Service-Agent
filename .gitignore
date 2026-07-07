@@ -2,6 +2,9 @@
 Question.md
 workOrderBackend-main/docs/superpowers/plans/2026-04-23-feedback-is-work-order.md
 workOrderBackend-main/src/main/resources/workorder-schema.sql
+.superpowers/
+docs/superpowers/
+**/docs/superpowers/
 
 # Python caches
 __pycache__/
