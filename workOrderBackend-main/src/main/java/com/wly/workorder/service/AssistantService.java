@@ -57,17 +57,27 @@ public class AssistantService {
   @Transactional
   public AssistantSessionView createSession() {
     AuthSession session = requireUser();
+    return loadOwnedSession(session.getUsername(), createSessionRecord(session));
+  }
+
+  @Transactional
+  public AssistantSessionView startSessionWithMessage(String content) {
+    AuthSession session = requireUser();
+    return sendMessage(createSessionRecord(session), content);
+  }
+
+  private String createSessionRecord(AuthSession session) {
     String id = "as-" + UUID.randomUUID().toString().substring(0, 12);
     String now = now();
     jdbcTemplate.update(
       """
       insert into wo_assistant_session
-      (id, owner_username, status, route, summary, pending_ticket_draft_json, ticket_id, created_at, updated_at)
-      values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, owner_username, status, route, summary, pending_ticket_draft_json, presale_state_json, ticket_id, created_at, updated_at)
+      values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       """,
-      id, session.getUsername(), "ACTIVE", "", "", "{}", "", now, now
+      id, session.getUsername(), "ACTIVE", "", "", "{}", "{}", "", now, now
     );
-    return getSession(id);
+    return id;
   }
 
   public AssistantSessionView getSession(String sessionId) {
@@ -79,9 +89,10 @@ public class AssistantService {
     AuthSession session = requireUser();
     return jdbcTemplate.query(
       """
-      select id, status, route, summary, pending_ticket_draft_json, ticket_id, created_at, updated_at
+      select id, status, route, summary, pending_ticket_draft_json, presale_state_json, ticket_id, created_at, updated_at
       from wo_assistant_session
-      where owner_username=?
+      where owner_username=? and deleted=0
+        and exists (select 1 from wo_assistant_message message where message.session_id=wo_assistant_session.id)
       order by updated_at desc, id desc
       limit 20
       """,
@@ -91,6 +102,7 @@ public class AssistantService {
         .route(rs.getString("route"))
         .summary(rs.getString("summary"))
         .pendingTicketDraft(readMap(rs.getString("pending_ticket_draft_json")))
+        .presaleState(readMap(rs.getString("presale_state_json")))
         .ticketId(rs.getString("ticket_id"))
         .createdAt(rs.getString("created_at"))
         .updatedAt(rs.getString("updated_at"))
@@ -98,6 +110,19 @@ public class AssistantService {
         .build(),
       session.getUsername()
     );
+  }
+
+  @Transactional
+  public void softDeleteSession(String sessionId) {
+    AuthSession session = requireUser();
+    String now = now();
+    int updated = jdbcTemplate.update(
+      "update wo_assistant_session set status=?, deleted=1, deleted_at=?, updated_at=? where id=? and owner_username=? and deleted=0",
+      "DELETED", now, now, sessionId, session.getUsername()
+    );
+    if (updated == 0) {
+      throw new IllegalArgumentException("assistant session not found");
+    }
   }
 
   @Transactional
@@ -121,7 +146,8 @@ public class AssistantService {
       sessionId,
       session.getUsername(),
       cleanContent,
-      history
+      history,
+      before.getPresaleState()
     );
     if (aiResponse == null || aiResponse.isMissingNode()) {
       aiResponse = fallbackAiResponse(cleanContent);
@@ -136,13 +162,16 @@ public class AssistantService {
     Map<String, Object> metadata = objectMapper.convertValue(aiResponse, new TypeReference<Map<String, Object>>() { });
     Map<String, Object> ticketDraft = readMap(writeJson(metadata.get("ticket_draft")));
     String pendingDraftJson = ticketDraft.isEmpty() ? "{}" : writeJson(ticketDraft);
+    Map<String, Object> returnedPresaleState = readMap(writeJson(metadata.get("presale_state")));
+    Map<String, Object> presaleState = returnedPresaleState.isEmpty() ? before.getPresaleState() : returnedPresaleState;
 
     insertMessage(sessionId, "assistant", reply, action, metadata);
     jdbcTemplate.update(
-      "update wo_assistant_session set route=?, summary=?, pending_ticket_draft_json=?, updated_at=? where id=? and owner_username=?",
+      "update wo_assistant_session set route=?, summary=?, pending_ticket_draft_json=?, presale_state_json=?, updated_at=? where id=? and owner_username=? and deleted=0",
       route,
       summarize(cleanContent),
       pendingDraftJson,
+      writeJson(presaleState),
       now(),
       sessionId,
       session.getUsername()
@@ -170,7 +199,7 @@ public class AssistantService {
       parseServiceGroup(String.valueOf(draft.get("service_group")))
     );
     jdbcTemplate.update(
-      "update wo_assistant_session set status=?, ticket_id=?, pending_ticket_draft_json=?, updated_at=? where id=? and owner_username=?",
+      "update wo_assistant_session set status=?, ticket_id=?, pending_ticket_draft_json=?, updated_at=? where id=? and owner_username=? and deleted=0",
       "TICKET_CREATED",
       feedback.getId(),
       "{}",
@@ -191,8 +220,8 @@ public class AssistantService {
   private AssistantSessionView loadOwnedSession(String username, String sessionId) {
     List<AssistantSessionView> sessions = jdbcTemplate.query(
       """
-      select id, status, route, summary, pending_ticket_draft_json, ticket_id, created_at, updated_at
-      from wo_assistant_session where id=? and owner_username=?
+      select id, status, route, summary, pending_ticket_draft_json, presale_state_json, ticket_id, created_at, updated_at
+      from wo_assistant_session where id=? and owner_username=? and deleted=0
       """,
       (rs, rowNum) -> AssistantSessionView.builder()
         .id(rs.getString("id"))
@@ -200,6 +229,7 @@ public class AssistantService {
         .route(rs.getString("route"))
         .summary(rs.getString("summary"))
         .pendingTicketDraft(readMap(rs.getString("pending_ticket_draft_json")))
+        .presaleState(readMap(rs.getString("presale_state_json")))
         .ticketId(rs.getString("ticket_id"))
         .createdAt(rs.getString("created_at"))
         .updatedAt(rs.getString("updated_at"))

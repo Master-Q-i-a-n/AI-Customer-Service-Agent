@@ -3,6 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from workOrderAI.app.model.response import SourceDocument
+from workOrderAI.app.model.presale import PresaleComparison, PresaleProduct, PresaleState
 
 
 CustomerAssistantAction = Literal["ANSWER", "CLARIFY", "CREATE_TICKET", "TRANSFER_HUMAN"]
@@ -36,6 +37,7 @@ class CustomerAssistantRequest(BaseModel):
     owner_username: str
     message: str
     history: list[CustomerAssistantMessage] = Field(default_factory=list)
+    presale_state: PresaleState = Field(default_factory=PresaleState)
 
 
 class CustomerAssistantResponse(BaseModel):
@@ -44,3 +46,6 @@ class CustomerAssistantResponse(BaseModel):
     reply: str
     sources: list[SourceDocument] = Field(default_factory=list)
     ticket_draft: CustomerAssistantTicketDraft | None = None
+    products: list[PresaleProduct] = Field(default_factory=list)
+    comparison: PresaleComparison | None = None
+    presale_state: PresaleState | None = None

@@ -1,11 +1,13 @@
 package com.wly.workorder.controller;
 
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -47,7 +49,7 @@ class AssistantControllerTest {
   void user_can_chat_and_confirm_ticket_from_ai_draft() throws Exception {
     String token = login("user", "user123");
     ObjectNode ai = assistantCreateTicketResponse();
-    when(queryAIService.customerAssistantChat(anyString(), eq("user"), anyString(), anyList())).thenReturn(ai);
+    when(queryAIService.customerAssistantChat(anyString(), eq("user"), anyString(), anyList(), anyMap())).thenReturn(ai);
 
     String sessionId = createSession(token);
 
@@ -89,8 +91,11 @@ class AssistantControllerTest {
     String token = registerAndLogin("assistant-list-owner");
     String otherToken = registerAndLogin("assistant-list-other");
 
-    String firstId = createSession(token);
     createSession(token);
+    String firstId = createSession(token);
+    sendText(token, firstId, "第一条咨询");
+    String secondId = createSession(token);
+    sendText(token, secondId, "第二条咨询");
     createSession(otherToken);
 
     mockMvc.perform(get("/api/assistant/sessions")
@@ -99,6 +104,79 @@ class AssistantControllerTest {
       .andExpect(jsonPath("$.code").value(200))
       .andExpect(jsonPath("$.data.length()").value(2))
       .andExpect(jsonPath("$.data[?(@.id == '" + firstId + "')]").exists());
+  }
+
+  @Test
+  void first_message_creates_the_only_visible_session_and_delete_is_soft() throws Exception {
+    String token = registerAndLogin("assistant-soft-delete");
+
+    MvcResult started = mockMvc.perform(post("/api/assistant/sessions/messages")
+        .header("Authorization", token)
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("{\"content\":\"想咨询扫地机器人\"}"))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.code").value(200))
+      .andExpect(jsonPath("$.data.messages.length()").value(2))
+      .andReturn();
+    String sessionId = objectMapper.readTree(started.getResponse().getContentAsString()).path("data").path("id").asText();
+
+    mockMvc.perform(get("/api/assistant/sessions").header("Authorization", token))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.data.length()").value(1));
+
+    mockMvc.perform(delete("/api/assistant/sessions/" + sessionId).header("Authorization", token))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.code").value(200));
+
+    mockMvc.perform(get("/api/assistant/sessions").header("Authorization", token))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.data.length()").value(0));
+    mockMvc.perform(get("/api/assistant/sessions/" + sessionId).header("Authorization", token))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.code").value(400));
+
+    Assertions.assertEquals(1, jdbcTemplate.queryForObject(
+      "select deleted from wo_assistant_session where id=?", Integer.class, sessionId
+    ));
+    Assertions.assertEquals(2, jdbcTemplate.queryForObject(
+      "select count(*) from wo_assistant_message where session_id=?", Integer.class, sessionId
+    ));
+  }
+
+  @Test
+  void presale_state_is_persisted_with_the_current_session() throws Exception {
+    String token = login("user", "user123");
+    ObjectNode ai = objectMapper.createObjectNode();
+    ai.put("action", "ANSWER");
+    ai.put("route", "PRESALE");
+    ai.put("reply", "已为您筛选商品。");
+    ai.putArray("sources");
+    ai.putArray("products");
+    ObjectNode state = ai.putObject("presale_state");
+    state.put("budget_target", 2500);
+    state.put("budget_flexible", true);
+    state.put("home_size_sqm", 90);
+    state.putArray("candidate_sku_ids").add("sku-p2-gray");
+    state.putArray("candidate_names").add("净巡 P2 Pet");
+    when(queryAIService.customerAssistantChat(anyString(), eq("user"), anyString(), anyList(), anyMap())).thenReturn(ai);
+
+    String sessionId = createSession(token);
+    mockMvc.perform(post("/api/assistant/sessions/" + sessionId + "/messages")
+        .header("Authorization", token)
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("{\"content\":\"90平，预算2500\"}"))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.data.presaleState.budget_target").value(2500))
+      .andExpect(jsonPath("$.data.presaleState.candidate_sku_ids[0]").value("sku-p2-gray"));
+
+    Assertions.assertEquals(
+      1,
+      jdbcTemplate.queryForObject(
+        "select count(*) from wo_assistant_session where id=? and presale_state_json like '%sku-p2-gray%'",
+        Integer.class,
+        sessionId
+      )
+    );
   }
 
   @Test
@@ -113,7 +191,7 @@ class AssistantControllerTest {
   @Test
   void ai_failure_returns_ticket_draft_without_auto_creating_ticket() throws Exception {
     String token = login("user", "user123");
-    when(queryAIService.customerAssistantChat(anyString(), eq("user"), anyString(), anyList())).thenReturn(null);
+    when(queryAIService.customerAssistantChat(anyString(), eq("user"), anyString(), anyList(), anyMap())).thenReturn(null);
 
     String sessionId = createSession(token);
 
@@ -152,6 +230,15 @@ class AssistantControllerTest {
 
     JsonNode root = objectMapper.readTree(result.getResponse().getContentAsString());
     return root.path("data").path("id").asText();
+  }
+
+  private void sendText(String token, String sessionId, String content) throws Exception {
+    mockMvc.perform(post("/api/assistant/sessions/" + sessionId + "/messages")
+        .header("Authorization", token)
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("{\"content\":\"" + content + "\"}"))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.code").value(200));
   }
 
   private ObjectNode assistantCreateTicketResponse() {

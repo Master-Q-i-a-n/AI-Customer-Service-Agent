@@ -14,6 +14,7 @@ from workOrderAI.app.model.customer_assistant import (
     CustomerAssistantTicketDraft,
 )
 from workOrderAI.app.service.rag_service import RagService
+from workOrderAI.app.service.presale_agent_graph import PresaleAgentGraph
 from workOrderAI.models.factory import router_model
 from workOrderAI.utils.logger_handler import logger
 
@@ -51,6 +52,7 @@ class CustomerAssistantState(TypedDict, total=False):
 class CustomerAssistantGraph:
     def __init__(self):
         self.router_model = router_model
+        self.presale_graph = PresaleAgentGraph(model=router_model)
         self.graph = self._build_graph()
 
     def _build_graph(self):
@@ -79,7 +81,11 @@ class CustomerAssistantGraph:
         return {"query_text": query_text}
 
     async def route_query(self, state: CustomerAssistantState) -> dict:
-        route = await self._classify_route(state.get("query_text") or "")
+        request = state["request"]
+        if self._should_continue_presale(request):
+            route = "PRESALE"
+        else:
+            route = await self._classify_route(state.get("query_text") or "")
         logger.info("[customer-assistant] route=%s", route)
         return {"route": route}
 
@@ -87,7 +93,7 @@ class CustomerAssistantGraph:
         route = state.get("route") or "KNOWLEDGE_QA"
         handlers = {
             "GENERAL_CHAT": self._general_chat_branch,
-            "PRESALE": self._knowledge_branch,
+            "PRESALE": self._presale_branch,
             "KNOWLEDGE_QA": self._knowledge_branch,
             "ORDER_QUERY": self._order_branch,
             "USER_RECORD": self._user_record_branch,
@@ -215,6 +221,9 @@ class CustomerAssistantGraph:
             reply=summary,
             sources=sources,
         )
+
+    async def _presale_branch(self, state: CustomerAssistantState) -> CustomerAssistantResponse:
+        return await self.presale_graph.run(state["request"])
 
     async def _order_branch(self, state: CustomerAssistantState) -> CustomerAssistantResponse:
         query = state["request"].message
@@ -474,6 +483,29 @@ class CustomerAssistantGraph:
         if compact in {"你好", "您好", "hi", "hello", "在吗", "在不在"}:
             return True
         return self._contains_any(compact, ["你会干什么", "你能干什么", "你会什么", "有什么用", "功能介绍"])
+
+    def _should_continue_presale(self, request: CustomerAssistantRequest) -> bool:
+        latest = str(request.message or "")
+        if self._contains_any(latest, ["退款", "退货", "订单", "物流", "故障", "报错", "不出水", "回不了充"]):
+            return False
+        current = request.presale_state
+        has_context = bool(
+            current.candidate_sku_ids
+            or current.budget_min is not None
+            or current.budget_max is not None
+            or current.budget_target is not None
+            or current.home_size_sqm is not None
+            or current.home_size_level is not None
+        )
+        strong_signal = bool(
+            re.search(r"\d{2,4}\s*(?:元|平米|平|㎡)", latest)
+            or self._contains_any(latest, ["预算", "对比", "比较", "前两款", "净巡", "小户型", "大户型"])
+        )
+        contextual_signal = self._contains_any(
+            latest,
+            ["木地板", "瓷砖", "地毯", "有猫", "有狗", "宠物", "基站", "静音", "噪音"],
+        )
+        return strong_signal or (has_context and contextual_signal)
 
     def _contains_any(self, text: str, keywords: list[str]) -> bool:
         return any(keyword in text for keyword in keywords)

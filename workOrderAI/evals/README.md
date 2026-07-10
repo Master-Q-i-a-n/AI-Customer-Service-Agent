@@ -6,6 +6,7 @@ This package contains the first evaluation suite for the work order AI service.
 
 ```bash
 python -m workOrderAI.evals.run --suite core --mode local
+python -m workOrderAI.evals.run --suite presale --mode local --skip-judge
 ```
 
 Useful smaller runs:

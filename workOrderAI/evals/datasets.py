@@ -8,6 +8,7 @@ TASK_FILES = {
     "reply_suggestion": "reply_suggestion.jsonl",
     "knowledge_qa": "knowledge_qa.jsonl",
     "refund": "refund_cases.json",
+    "presale": "presale_cases.jsonl",
 }
 
 
@@ -45,6 +46,8 @@ def load_suite(suite: str) -> dict[str, list[dict]]:
         tasks = ("classification", "reply_suggestion", "knowledge_qa")
     elif suite == "refund":
         tasks = ("refund",)
+    elif suite == "presale":
+        tasks = ("presale",)
     else:
         raise ValueError(f"unsupported eval suite: {suite}")
     return {task: load_dataset(task) for task in tasks}
@@ -79,6 +82,12 @@ def validate_case(task: str, case: dict, line_number: int | None = None) -> None
             raise ValueError(f"{label} expected missing field: expected_sources")
     elif task == "refund":
         for field in ("expected_intent", "expected_action", "forbidden_claims"):
+            if field not in case["expected"]:
+                raise ValueError(f"{label} expected missing field: {field}")
+        if not isinstance(case.get("required_tools"), list):
+            raise ValueError(f"{label} missing list field: required_tools")
+    elif task == "presale":
+        for field in ("action", "product_sku_ids", "comparison", "forbidden_claims"):
             if field not in case["expected"]:
                 raise ValueError(f"{label} expected missing field: {field}")
         if not isinstance(case.get("required_tools"), list):

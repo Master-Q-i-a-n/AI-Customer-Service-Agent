@@ -38,7 +38,8 @@ class DatabaseMigrationTest {
   void createsRefundCommerceTablesAndSeedOrders() {
     for (String table : List.of(
       "ec_order", "ec_order_item", "ec_payment", "ec_shipment",
-      "ec_refund_policy", "ec_refund_request", "ec_refund_audit"
+      "ec_refund_policy", "ec_refund_request", "ec_refund_audit",
+      "ec_product", "ec_product_sku", "wo_assistant_session"
     )) {
       Integer count = jdbcTemplate.queryForObject(
         "select count(*) from INFORMATION_SCHEMA.TABLES where lower(TABLE_NAME) = ?",
@@ -50,6 +51,18 @@ class DatabaseMigrationTest {
 
     Integer orderCount = jdbcTemplate.queryForObject("select count(*) from ec_order", Integer.class);
     assertTrue(orderCount != null && orderCount >= 5);
+    Integer productCount = jdbcTemplate.queryForObject("select count(*) from ec_product where active=1", Integer.class);
+    assertEquals(4, productCount);
+
+    for (String column : List.of("deleted", "deleted_at")) {
+      Integer count = jdbcTemplate.queryForObject(
+        "select count(*) from INFORMATION_SCHEMA.COLUMNS where lower(TABLE_NAME) = ? and lower(COLUMN_NAME) = ?",
+        Integer.class,
+        "wo_assistant_session",
+        column
+      );
+      assertEquals(1, count, "wo_assistant_session." + column + " should exist");
+    }
   }
 
   @Test

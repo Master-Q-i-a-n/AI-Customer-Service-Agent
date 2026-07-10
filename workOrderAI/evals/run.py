@@ -10,6 +10,7 @@ from workOrderAI.evals.datasets import TASK_FILES, load_dataset
 SUITES = {
     "core": ["classification", "reply_suggestion", "knowledge_qa"],
     "refund": ["refund"],
+    "presale": ["presale"],
 }
 
 

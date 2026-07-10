@@ -231,8 +231,12 @@ class RagLightPathTests(unittest.IsolatedAsyncioTestCase):
 
         matches = await RagService.retrieve_direct_reranked_matches(service, "query")
 
-        service.retrieve_direct_document_matches.assert_awaited_once_with("query", limit=5)
-        service.rerank_documents.assert_awaited_once_with("query", documents, 3, "[RAG-light]")
+        service.retrieve_direct_document_matches.assert_awaited_once_with(
+            "query", limit=service._rerank_candidate_k()
+        )
+        service.rerank_documents.assert_awaited_once_with(
+            "query", documents, service._rerank_top_k(), "[RAG-light]"
+        )
         self.assertEqual([doc.page_content for doc, _ in matches], ["doc-5", "doc-3", "doc-1"])
         self.assertEqual([score for _, score in matches], [0.93, 0.88, 0.1])
 
@@ -289,7 +293,9 @@ class RagLightPathTests(unittest.IsolatedAsyncioTestCase):
 
         result = await RagService.retrieve_document(service, "query")
 
-        service.rerank_documents.assert_awaited_once_with("query", documents, 3, "[RAG]")
+        service.rerank_documents.assert_awaited_once_with(
+            "query", documents, service._rerank_top_k(), "[RAG]"
+        )
         self.assertEqual([doc.page_content for doc in result], ["doc-3", "doc-2", "doc-1"])
 
     async def test_chitchat_invalid_returns_knowledge_refusal(self):
@@ -305,8 +311,8 @@ class RagLightPathTests(unittest.IsolatedAsyncioTestCase):
 
 class HydePromptTests(unittest.TestCase):
     def test_hyde_prompts_are_short_retrieval_expansions(self):
-        self.assertIn("60字以内", QUESTION_HYDE_PROMPT)
-        self.assertIn("60字以内", STATEMENT_HYDE_PROMPT)
+        self.assertIn("120字以内", QUESTION_HYDE_PROMPT)
+        self.assertIn("120字以内", STATEMENT_HYDE_PROMPT)
         self.assertNotIn("专业且详细", QUESTION_HYDE_PROMPT)
         self.assertNotIn("写一段诊断和排查指南", STATEMENT_HYDE_PROMPT)
 

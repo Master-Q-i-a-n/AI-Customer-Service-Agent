@@ -1,45 +1,107 @@
 <template>
   <section class="assistant-page" v-loading="initializing">
-    <aside class="assistant-history">
+    <button
+      v-if="historyOpen"
+      type="button"
+      class="assistant-history-backdrop"
+      aria-label="关闭历史会话"
+      @click="historyOpen = false"
+    />
+
+    <aside
+      class="assistant-history"
+      :class="{ 'is-open': historyOpen }"
+      :aria-hidden="isMobileViewport && !historyOpen"
+    >
       <div class="assistant-history__header">
         <span>历史会话</span>
-        <el-button link type="primary" :loading="initializing" @click="startNewSession">新建</el-button>
+        <div class="assistant-history__header-actions">
+          <el-tooltip content="开始新对话" placement="bottom">
+            <el-button circle text aria-label="开始新对话" @click="startNewSession">
+              <el-icon><Plus /></el-icon>
+            </el-button>
+          </el-tooltip>
+          <el-button
+            class="assistant-history__close"
+            circle
+            text
+            aria-label="关闭历史会话"
+            @click="historyOpen = false"
+          >
+            <el-icon><Close /></el-icon>
+          </el-button>
+        </div>
       </div>
 
-      <div v-if="historyFallback" class="assistant-history__empty">历史列表接口暂不可用，已显示本机缓存会话</div>
-      <div v-else-if="historyUnavailable" class="assistant-history__empty">历史会话接口暂不可用，当前会话仍可使用</div>
-      <div v-else-if="!sessionList.length" class="assistant-history__empty">暂无历史会话</div>
-      <button
-        v-for="item in sessionList"
-        :key="item.id"
-        type="button"
-        class="assistant-history__item"
-        :class="{ 'is-active': session?.id === item.id }"
-        @click="selectSession(item.id)"
-      >
-        <span class="assistant-history__title">{{ sessionTitle(item) }}</span>
-        <span class="assistant-history__meta">
-          {{ routeLabel(item.route) }} · {{ formatMessageTime(item.updatedAt) }}
-        </span>
-      </button>
+      <div class="assistant-history__search">
+        <el-input v-model="historyQuery" clearable placeholder="搜索会话" aria-label="搜索历史会话">
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+      </div>
+
+      <div class="assistant-history__list">
+        <div v-if="historyFallback" class="assistant-history__empty">历史列表接口暂不可用，已显示本机缓存会话</div>
+        <div v-else-if="historyUnavailable" class="assistant-history__empty">历史会话接口暂不可用，当前会话仍可使用</div>
+        <div v-else-if="!sessionList.length" class="assistant-history__empty">暂无历史会话</div>
+        <div v-else-if="!filteredSessionList.length" class="assistant-history__empty">没有匹配的会话</div>
+        <article
+          v-for="item in filteredSessionList"
+          :key="item.id"
+          class="assistant-history__item"
+          :class="{ 'is-active': session?.id === item.id }"
+        >
+          <button type="button" class="assistant-history__select" @click="selectSession(item.id)">
+            <span class="assistant-history__title">{{ sessionTitle(item) }}</span>
+            <span class="assistant-history__meta">
+              {{ routeLabel(item.route) }} · {{ formatMessageTime(item.updatedAt) }}
+            </span>
+          </button>
+          <el-tooltip content="删除会话" placement="right">
+            <el-button
+              class="assistant-history__delete"
+              circle
+              text
+              :loading="deletingSessionId === item.id"
+              :aria-label="`删除 ${sessionTitle(item)}`"
+              @click="deleteSession(item)"
+            >
+              <el-icon><Delete /></el-icon>
+            </el-button>
+          </el-tooltip>
+        </article>
+      </div>
     </aside>
 
     <div class="assistant-panel">
       <div class="assistant-panel__header">
         <div>
           <p class="assistant-page__eyebrow">AI 客服</p>
-          <h2 class="assistant-page__title">先对话，再转人工</h2>
+          <h2 class="assistant-page__title">客服与选购助手</h2>
         </div>
-        <el-button class="assistant-panel__reset" :loading="initializing" @click="startNewSession">
-          <el-icon><Refresh /></el-icon>
-          新会话
-        </el-button>
+        <div class="assistant-panel__actions">
+          <el-tooltip content="历史会话" placement="bottom">
+            <el-button class="assistant-panel__history" circle plain aria-label="打开历史会话" @click="historyOpen = true">
+              <el-icon><ChatDotRound /></el-icon>
+            </el-button>
+          </el-tooltip>
+          <el-tooltip content="开始新对话" placement="bottom">
+            <el-button class="assistant-panel__reset" circle plain aria-label="开始新对话" @click="startNewSession">
+              <el-icon><Refresh /></el-icon>
+            </el-button>
+          </el-tooltip>
+        </div>
       </div>
 
-      <div ref="messageList" class="assistant-messages">
+      <div v-if="requirementChips.length" class="assistant-requirements" aria-label="当前选购需求">
+        <span v-for="item in requirementChips" :key="item" class="assistant-requirement-chip">{{ item }}</span>
+      </div>
+
+      <div ref="messageList" class="assistant-messages" aria-live="polite">
         <div v-if="!messages.length" class="assistant-empty">
           <div class="assistant-empty__mark">AI</div>
-          <p>可以直接描述商品咨询、订单物流、使用记录、故障或退款诉求。</p>
+          <p>可以直接描述选购需求、订单物流、使用记录、故障或退款诉求。</p>
         </div>
 
         <article
@@ -67,8 +129,104 @@
                 {{ source.title || '知识库文档' }}
               </span>
             </div>
+
+            <div
+              v-if="messageProducts(message).length"
+              class="assistant-products"
+              :class="{
+                'is-single': messageProducts(message).length === 1,
+                'is-pair': messageProducts(message).length === 2
+              }"
+            >
+              <article
+                v-for="product in messageProducts(message)"
+                :key="product.sku_id"
+                class="assistant-product"
+              >
+                <button
+                  type="button"
+                  class="assistant-product__image-button"
+                  :aria-label="`查看 ${product.name} 详情`"
+                  @click="openProductDetail(product)"
+                >
+                  <img :src="product.image_url" :alt="product.name" class="assistant-product__image" />
+                </button>
+                <div class="assistant-product__content">
+                  <div class="assistant-product__topline">
+                    <span class="assistant-product__sku">{{ product.sku_name }}</span>
+                    <span class="assistant-product__stock">现货 {{ product.stock }}</span>
+                  </div>
+                  <h3 class="assistant-product__name">{{ product.name }}</h3>
+                  <p class="assistant-product__price">{{ formatProductPrice(product.price) }}</p>
+                  <div class="assistant-product__highlights">
+                    <span v-for="item in product.highlights" :key="item">{{ item }}</span>
+                  </div>
+                  <ul v-if="product.match_reasons?.length" class="assistant-product__reasons">
+                    <li v-for="reason in product.match_reasons" :key="reason">{{ reason }}</li>
+                  </ul>
+                  <p v-for="warning in product.warnings" :key="warning" class="assistant-product__warning">
+                    {{ warning }}
+                  </p>
+                  <div class="assistant-product__actions">
+                    <el-button plain size="small" @click="openProductDetail(product)">
+                      <el-icon><View /></el-icon>
+                      查看详情
+                    </el-button>
+                    <el-button
+                      size="small"
+                      :type="isCompareSelected(product) ? 'success' : 'primary'"
+                      plain
+                      @click="toggleCompare(product)"
+                    >
+                      <el-icon><Check v-if="isCompareSelected(product)" /><Plus v-else /></el-icon>
+                      {{ isCompareSelected(product) ? '已加入' : '加入对比' }}
+                    </el-button>
+                  </div>
+                </div>
+              </article>
+            </div>
+
+            <div v-if="messageComparison(message)" class="assistant-comparison">
+              <div class="assistant-comparison__header">
+                <span>参数对比</span>
+                <strong>{{ messageComparison(message).product_names.join(' / ') }}</strong>
+              </div>
+              <div class="assistant-comparison__table">
+                <div class="assistant-comparison__row is-head">
+                  <span>对比项</span>
+                  <strong v-for="name in messageComparison(message).product_names" :key="name">{{ name }}</strong>
+                </div>
+                <div
+                  v-for="row in messageComparison(message).rows"
+                  :key="row.label"
+                  class="assistant-comparison__row"
+                >
+                  <span>{{ row.label }}</span>
+                  <strong v-for="(value, index) in row.values" :key="`${row.label}-${index}`">{{ value }}</strong>
+                </div>
+              </div>
+              <p class="assistant-comparison__recommendation">
+                {{ messageComparison(message).recommendation }}
+              </p>
+            </div>
           </div>
         </article>
+      </div>
+
+      <div v-if="currentCompareSelection.length" class="assistant-compare-tray">
+        <div class="assistant-compare-tray__selection">
+          <span class="assistant-compare-tray__label">已选 {{ currentCompareSelection.length }}/2</span>
+          <span v-for="product in currentCompareSelection" :key="product.sku_id" class="assistant-compare-chip">
+            {{ product.name }}
+            <button type="button" :aria-label="`移除 ${product.name}`" @click="removeCompare(product.sku_id)">
+              <el-icon><Close /></el-icon>
+            </button>
+          </span>
+        </div>
+        <el-button type="primary" :disabled="currentCompareSelection.length !== 2" :loading="sending" @click="compareSelected">
+          <el-icon><DataAnalysis /></el-icon>
+          开始对比
+        </el-button>
       </div>
 
       <div v-if="pendingDraft && !createdTicketId" class="assistant-ticket">
@@ -96,11 +254,11 @@
         <el-input
           v-model.trim="draftMessage"
           type="textarea"
-          :rows="3"
+          :rows="2"
           resize="none"
           maxlength="500"
           show-word-limit
-          placeholder="请输入你的问题..."
+          placeholder="继续补充需求或选择商品进行对比..."
           @keydown.ctrl.enter.prevent="sendMessage"
         />
         <div class="assistant-composer__actions">
@@ -112,20 +270,84 @@
         </div>
       </div>
     </div>
+
+    <el-drawer
+      v-model="detailVisible"
+      :size="drawerSize"
+      :with-header="false"
+      class="assistant-product-drawer"
+    >
+      <template v-if="selectedProduct">
+        <div class="assistant-detail__toolbar">
+          <span>商品详情</span>
+          <el-button circle text aria-label="关闭商品详情" @click="detailVisible = false">
+            <el-icon><Close /></el-icon>
+          </el-button>
+        </div>
+        <img :src="selectedProduct.image_url" :alt="selectedProduct.name" class="assistant-detail__image" />
+        <div class="assistant-detail__identity">
+          <span>{{ selectedProduct.sku_name }}</span>
+          <h2>{{ selectedProduct.name }}</h2>
+          <div class="assistant-detail__commerce">
+            <strong>{{ formatProductPrice(selectedProduct.price) }}</strong>
+            <span>现货 {{ selectedProduct.stock }} 件</span>
+          </div>
+          <p>{{ selectedProduct.summary }}</p>
+        </div>
+        <div class="assistant-detail__section">
+          <h3>核心规格</h3>
+          <dl class="assistant-detail__specs">
+            <div v-for="row in productAttributeRows(selectedProduct)" :key="row.label">
+              <dt>{{ row.label }}</dt>
+              <dd>{{ row.value }}</dd>
+            </div>
+          </dl>
+        </div>
+        <div v-if="selectedProduct.match_reasons?.length" class="assistant-detail__section">
+          <h3>适合你的原因</h3>
+          <ul class="assistant-detail__reasons">
+            <li v-for="reason in selectedProduct.match_reasons" :key="reason">{{ reason }}</li>
+          </ul>
+        </div>
+        <div class="assistant-detail__footer">
+          <el-button
+            type="primary"
+            :plain="!isCompareSelected(selectedProduct)"
+            @click="toggleCompare(selectedProduct)"
+          >
+            <el-icon><Check v-if="isCompareSelected(selectedProduct)" /><Plus v-else /></el-icon>
+            {{ isCompareSelected(selectedProduct) ? '已加入对比' : '加入对比' }}
+          </el-button>
+        </div>
+      </template>
+    </el-drawer>
   </section>
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
-import { DocumentChecked, Promotion, Refresh } from '@element-plus/icons-vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import {
+  Check,
+  ChatDotRound,
+  Close,
+  DataAnalysis,
+  Delete,
+  DocumentChecked,
+  Plus,
+  Promotion,
+  Refresh,
+  Search,
+  View
+} from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import {
   confirmAssistantTicket,
-  createAssistantSession,
+  deleteAssistantSession,
   getAssistantSession,
   listAssistantSessions,
-  sendAssistantMessage
+  sendAssistantMessage,
+  startAssistantConversation
 } from '../api/assistant'
 import { sessionState } from '../store/session'
 
@@ -134,12 +356,19 @@ const LOCAL_HISTORY_LIMIT = 20
 const initializing = ref(false)
 const sending = ref(false)
 const creatingTicket = ref(false)
+const deletingSessionId = ref('')
 const draftMessage = ref('')
+const historyQuery = ref('')
+const historyOpen = ref(false)
 const session = ref(null)
 const sessionList = ref([])
 const historyUnavailable = ref(false)
 const historyFallback = ref(false)
 const messageList = ref(null)
+const compareSelections = ref({})
+const detailVisible = ref(false)
+const selectedProduct = ref(null)
+const viewportWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth)
 
 const messages = computed(() => Array.isArray(session.value?.messages) ? session.value.messages : [])
 const pendingDraft = computed(() => {
@@ -147,6 +376,62 @@ const pendingDraft = computed(() => {
   return draft && Object.keys(draft).length ? draft : null
 })
 const createdTicketId = computed(() => session.value?.ticketId || '')
+const currentCompareSelection = computed(() => {
+  const id = session.value?.id
+  return id && Array.isArray(compareSelections.value[id]) ? compareSelections.value[id] : []
+})
+const drawerSize = computed(() => viewportWidth.value <= 960 ? '100%' : '480px')
+const isMobileViewport = computed(() => viewportWidth.value <= 960)
+const filteredSessionList = computed(() => {
+  const keyword = historyQuery.value.trim().toLowerCase()
+  if (!keyword) {
+    return sessionList.value
+  }
+  return sessionList.value.filter(item => {
+    const searchable = `${sessionTitle(item)} ${routeLabel(item.route)}`.toLowerCase()
+    return searchable.includes(keyword)
+  })
+})
+const presaleState = computed(() => session.value?.presaleState || session.value?.presale_state || {})
+const requirementChips = computed(() => {
+  const state = presaleState.value
+  const items = []
+  if (state.budget_unlimited) {
+    items.push('预算不限')
+  } else {
+    if (state.budget_target != null) {
+      items.push(`目标预算 ${formatBudget(state.budget_target)}`)
+    }
+    if (state.budget_min != null && state.budget_max != null) {
+      const label = state.budget_target != null ? '推荐范围' : '预算范围'
+      items.push(`${label} ${formatBudget(state.budget_min)}–${formatBudget(state.budget_max)}`)
+    } else if (state.budget_max != null) {
+      items.push(`预算上限 ${formatBudget(state.budget_max)}`)
+    }
+  }
+  if (state.home_size_sqm != null) {
+    items.push(`${state.home_size_sqm}㎡`)
+  } else if (state.home_size_level) {
+    items.push({ SMALL: '小户型', MEDIUM: '中等户型', LARGE: '大户型' }[state.home_size_level] || state.home_size_level)
+  }
+  if (Array.isArray(state.floor_types) && state.floor_types.length) {
+    items.push(state.floor_types.join('、'))
+  }
+  if (state.has_pet === true) {
+    items.push('宠物家庭')
+  } else if (state.has_pet === false) {
+    items.push('无宠物')
+  }
+  if (state.station_preference === true) {
+    items.push('需要基站')
+  } else if (state.station_preference === false) {
+    items.push('无需基站')
+  }
+  if (state.noise_sensitive === true) {
+    items.push('低噪偏好')
+  }
+  return items
+})
 
 const routeTextMap = {
   GENERAL_CHAT: 'AI 客服',
@@ -161,19 +446,24 @@ const routeTextMap = {
 }
 
 async function startNewSession() {
-  initializing.value = true
-  try {
-    const res = await createAssistantSession()
-    session.value = res?.data || null
-    rememberLocalSession(session.value?.id)
-    await loadSessionList()
-    await scrollToLatest()
-  } catch (error) {
-    session.value = null
-    ElMessage.error(error.message || 'AI 客服会话创建失败')
-  } finally {
-    initializing.value = false
+  // 新会话仅是本地草稿，首条消息发送成功后才会写入后端历史。
+  session.value = {
+    id: '',
+    status: 'ACTIVE',
+    route: '',
+    summary: '',
+    pendingTicketDraft: {},
+    presaleState: {},
+    ticketId: '',
+    messages: [],
+    createdAt: '',
+    updatedAt: ''
   }
+  detailVisible.value = false
+  selectedProduct.value = null
+  historyOpen.value = false
+  historyQuery.value = ''
+  await scrollToLatest()
 }
 
 async function loadSessionList() {
@@ -212,13 +502,19 @@ async function loadInitialSession() {
 }
 
 async function selectSession(id) {
-  if (!id || session.value?.id === id) {
+  if (!id) {
+    return
+  }
+  if (session.value?.id === id) {
+    historyOpen.value = false
     return
   }
   initializing.value = true
   try {
     const res = await getAssistantSession(id)
     session.value = res?.data || null
+    detailVisible.value = false
+    historyOpen.value = false
     await scrollToLatest()
   } catch (error) {
     ElMessage.error(error.message || '会话加载失败')
@@ -232,17 +528,16 @@ async function sendMessage() {
   if (!content || sending.value) {
     return
   }
-  if (!session.value?.id) {
-    await startNewSession()
-  }
-  if (!session.value?.id) {
-    return
-  }
-
-  sending.value = true
   draftMessage.value = ''
+  await submitMessage(content)
+}
+
+async function submitMessage(content) {
+  sending.value = true
   try {
-    const res = await sendAssistantMessage(session.value.id, content)
+    const res = session.value?.id
+      ? await sendAssistantMessage(session.value.id, content)
+      : await startAssistantConversation(content)
     session.value = res?.data || session.value
     rememberLocalSession(session.value?.id)
     await loadSessionList()
@@ -252,6 +547,131 @@ async function sendMessage() {
     sending.value = false
     await scrollToLatest()
   }
+}
+
+async function deleteSession(item) {
+  if (!item?.id || deletingSessionId.value) {
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      '删除后会话将不再出现在历史列表中，但系统会保留原始记录。',
+      '删除会话',
+      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch (error) {
+    return
+  }
+
+  deletingSessionId.value = item.id
+  try {
+    await deleteAssistantSession(item.id)
+    forgetLocalSession(item.id)
+    const remainingSelections = { ...compareSelections.value }
+    delete remainingSelections[item.id]
+    compareSelections.value = remainingSelections
+    const deletedCurrentSession = session.value?.id === item.id
+
+    await loadSessionList()
+    if (deletedCurrentSession) {
+      if (sessionList.value.length) {
+        await selectSession(sessionList.value[0].id)
+      } else {
+        await startNewSession()
+      }
+    }
+    ElMessage.success('会话已删除')
+  } catch (error) {
+    ElMessage.error(error.message || '会话删除失败')
+  } finally {
+    deletingSessionId.value = ''
+  }
+}
+
+function messageProducts(message) {
+  return Array.isArray(message?.metadata?.products) ? message.metadata.products : []
+}
+
+function messageComparison(message) {
+  const comparison = message?.metadata?.comparison
+  return comparison && Array.isArray(comparison.rows) && Array.isArray(comparison.product_names)
+    ? comparison
+    : null
+}
+
+function openProductDetail(product) {
+  selectedProduct.value = product
+  detailVisible.value = true
+}
+
+function isCompareSelected(product) {
+  return currentCompareSelection.value.some(item => item.sku_id === product?.sku_id)
+}
+
+function toggleCompare(product) {
+  if (!product?.sku_id || !session.value?.id) {
+    return
+  }
+  if (isCompareSelected(product)) {
+    removeCompare(product.sku_id)
+    return
+  }
+  if (currentCompareSelection.value.length >= 2) {
+    ElMessage.warning('最多选择两款商品进行对比')
+    return
+  }
+  compareSelections.value = {
+    ...compareSelections.value,
+    [session.value.id]: [...currentCompareSelection.value, product]
+  }
+}
+
+function removeCompare(skuId) {
+  if (!session.value?.id) {
+    return
+  }
+  compareSelections.value = {
+    ...compareSelections.value,
+    [session.value.id]: currentCompareSelection.value.filter(item => item.sku_id !== skuId)
+  }
+}
+
+async function compareSelected() {
+  if (currentCompareSelection.value.length !== 2 || sending.value) {
+    return
+  }
+  const [first, second] = currentCompareSelection.value
+  await submitMessage(`请对比 ${first.name} 和 ${second.name}`)
+}
+
+function formatProductPrice(value) {
+  const amount = Number(value)
+  return Number.isFinite(amount) ? `¥${amount.toFixed(0)}` : '价格待确认'
+}
+
+function formatBudget(value) {
+  const amount = Number(value)
+  if (!Number.isFinite(amount)) {
+    return '¥--'
+  }
+  return `¥${Number.isInteger(amount) ? amount : amount.toFixed(2).replace(/\.?0+$/, '')}`
+}
+
+function productAttributeRows(product) {
+  const attributes = product?.attributes || {}
+  const booleanLabel = value => value ? '支持' : '不支持'
+  return [
+    { label: '适用面积', value: attributes.home_size_max ? `最高 ${attributes.home_size_max}㎡` : '--' },
+    { label: '适用地面', value: Array.isArray(attributes.floor_types) ? attributes.floor_types.join('、') : '--' },
+    { label: '吸力', value: attributes.suction_pa ? `${attributes.suction_pa}Pa` : '--' },
+    { label: '续航', value: attributes.runtime_minutes ? `${attributes.runtime_minutes} 分钟` : '--' },
+    { label: '导航方式', value: attributes.navigation || '--' },
+    { label: '避障方式', value: attributes.obstacle_avoidance || '--' },
+    { label: '基站', value: attributes.station_type || '无' },
+    { label: '拖布抬升', value: booleanLabel(attributes.mop_lift) },
+    { label: '防毛发缠绕', value: booleanLabel(attributes.anti_tangle) },
+    { label: '工作噪音', value: attributes.noise_db ? `约 ${attributes.noise_db}dB` : '--' }
+  ]
 }
 
 async function confirmTicket() {
@@ -295,7 +715,7 @@ async function loadLocalSessionList() {
   for (const id of ids) {
     try {
       const res = await getAssistantSession(id)
-      if (res?.data?.id) {
+      if (res?.data?.id && Array.isArray(res.data.messages) && res.data.messages.length) {
         items.push({ ...res.data, messages: [] })
       }
     } catch (error) {
@@ -355,7 +775,29 @@ async function scrollToLatest() {
   }
 }
 
-onMounted(loadInitialSession)
+function handleViewportResize() {
+  viewportWidth.value = window.innerWidth
+  if (viewportWidth.value > 960) {
+    historyOpen.value = false
+  }
+}
+
+function handleWindowKeydown(event) {
+  if (event.key === 'Escape') {
+    historyOpen.value = false
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('resize', handleViewportResize)
+  window.addEventListener('keydown', handleWindowKeydown)
+  loadInitialSession()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleViewportResize)
+  window.removeEventListener('keydown', handleWindowKeydown)
+})
 </script>
 
 <style scoped>
@@ -363,15 +805,24 @@ onMounted(loadInitialSession)
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
   gap: 14px;
-  min-height: calc(100vh - 150px);
+  height: calc(100dvh - 152px);
+  min-height: 0;
+  overflow: hidden;
   color: #16233f;
 }
 
+.assistant-history-backdrop {
+  display: none;
+}
+
 .assistant-history {
-  min-height: calc(100vh - 170px);
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
   overflow: hidden;
   border: 1px solid #e3eaf4;
-  border-radius: 10px;
+  border-radius: 8px;
   background: #fff;
 }
 
@@ -386,6 +837,34 @@ onMounted(loadInitialSession)
   font-weight: 650;
 }
 
+.assistant-history__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.assistant-history__close {
+  display: none;
+}
+
+.assistant-history__search {
+  padding: 12px 14px;
+  border-bottom: 1px solid #edf1f6;
+}
+
+.assistant-history__search :deep(.el-input__wrapper) {
+  border-radius: 6px;
+  box-shadow: 0 0 0 1px #dfe6ef inset;
+}
+
+.assistant-history__list {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
 .assistant-history__empty {
   padding: 18px 16px;
   color: #8390a7;
@@ -393,21 +872,66 @@ onMounted(loadInitialSession)
 }
 
 .assistant-history__item {
-  display: grid;
+  display: flex;
+  align-items: stretch;
   width: 100%;
-  gap: 6px;
-  padding: 13px 16px;
-  border: 0;
+  min-height: 66px;
+  margin: 0;
   border-bottom: 1px solid #f0f4fa;
   background: #fff;
+  color: inherit;
+  position: relative;
+}
+
+.assistant-history__item:hover {
+  background: #f7f9fc;
+}
+
+.assistant-history__item.is-active {
+  background: #f1f6ff;
+}
+
+.assistant-history__item.is-active::before {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: #2f6fe4;
+  content: "";
+}
+
+.assistant-history__select {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 6px;
+  padding: 13px 4px 13px 18px;
+  border: 0;
+  background: transparent;
   color: inherit;
   text-align: left;
   cursor: pointer;
 }
 
-.assistant-history__item:hover,
-.assistant-history__item.is-active {
-  background: #f1f6ff;
+.assistant-history__delete {
+  align-self: center;
+  flex: 0 0 auto;
+  margin: 0 8px;
+  color: #7a879d;
+  opacity: 0;
+  transition: color 0.16s ease, background-color 0.16s ease, opacity 0.16s ease;
+}
+
+.assistant-history__item:hover .assistant-history__delete,
+.assistant-history__item:focus-within .assistant-history__delete {
+  opacity: 1;
+}
+
+.assistant-history__delete:hover {
+  color: #c2410c;
+  background: #fff1ec;
 }
 
 .assistant-history__title {
@@ -429,10 +953,11 @@ onMounted(loadInitialSession)
 
 .assistant-panel {
   display: flex;
-  min-height: calc(100vh - 170px);
+  height: 100%;
+  min-height: 0;
   flex-direction: column;
   border: 1px solid #e3eaf4;
-  border-radius: 10px;
+  border-radius: 8px;
   background: #fbfdff;
   overflow: hidden;
 }
@@ -445,6 +970,12 @@ onMounted(loadInitialSession)
   padding: 18px 20px;
   border-bottom: 1px solid #e8eef7;
   background: #fff;
+}
+
+.assistant-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .assistant-page__eyebrow {
@@ -461,17 +992,46 @@ onMounted(loadInitialSession)
 }
 
 .assistant-panel__reset {
-  border-radius: 8px;
+  flex: 0 0 auto;
+}
+
+.assistant-panel__history {
+  display: none;
+}
+
+.assistant-requirements {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 11px 20px;
+  border-bottom: 1px solid #e8eef7;
+  background: #f8fafc;
+}
+
+.assistant-requirement-chip {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  padding: 4px 9px;
+  border: 1px solid #dce5ef;
+  border-radius: 6px;
+  background: #fff;
+  color: #42536b;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .assistant-messages {
   display: flex;
   flex: 1;
-  min-height: 360px;
+  min-height: 0;
   flex-direction: column;
   gap: 16px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 20px;
+  scrollbar-gutter: stable;
 }
 
 .assistant-empty {
@@ -530,11 +1090,17 @@ onMounted(loadInitialSession)
 }
 
 .assistant-message__body {
-  max-width: min(720px, calc(100% - 48px));
+  max-width: min(980px, calc(100% - 48px));
   padding: 13px 15px;
   border: 1px solid #dce7f6;
   border-radius: 8px;
   background: #fff;
+}
+
+.assistant-message.is-assistant .assistant-message__body {
+  border: 0;
+  background: transparent;
+  padding: 2px 0 0;
 }
 
 .assistant-message:not(.is-assistant) .assistant-message__body {
@@ -581,6 +1147,386 @@ onMounted(loadInitialSession)
   font-size: 12px;
 }
 
+.assistant-products {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.assistant-products.is-single {
+  grid-template-columns: minmax(0, 780px);
+}
+
+.assistant-products.is-pair {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.assistant-product {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #e0e7ef;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(31, 52, 82, 0.05);
+}
+
+.assistant-products.is-single .assistant-product {
+  display: grid;
+  grid-template-columns: minmax(240px, 42%) minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.assistant-products.is-single .assistant-product__image-button {
+  min-height: 270px;
+  aspect-ratio: auto;
+}
+
+.assistant-products.is-single .assistant-product__content {
+  padding: 4px 2px 4px 16px;
+}
+
+.assistant-product__image-button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 6px;
+  aspect-ratio: 4 / 3;
+  background: #eef1f4;
+  cursor: pointer;
+}
+
+.assistant-product__image-button:focus-visible {
+  outline: 2px solid #2f6fe4;
+  outline-offset: 2px;
+}
+
+.assistant-product__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 180ms ease;
+}
+
+.assistant-product__image-button:hover .assistant-product__image {
+  transform: scale(1.025);
+}
+
+.assistant-product__content {
+  padding-top: 12px;
+}
+
+.assistant-product__topline,
+.assistant-detail__commerce {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.assistant-product__sku {
+  overflow: hidden;
+  color: #6f7d91;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assistant-product__stock {
+  flex: 0 0 auto;
+  color: #16865a;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.assistant-product__name {
+  margin: 7px 0 0;
+  color: #17294f;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.assistant-product__price {
+  margin: 6px 0 0;
+  color: #b45309;
+  font-size: 21px;
+  font-weight: 750;
+}
+
+.assistant-product__highlights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 9px;
+}
+
+.assistant-product__highlights span {
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: #edf3f8;
+  color: #53647d;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.assistant-product__reasons,
+.assistant-detail__reasons {
+  display: grid;
+  gap: 5px;
+  margin: 10px 0 0;
+  padding-left: 17px;
+  color: #40536f;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.assistant-product__reasons li::marker,
+.assistant-detail__reasons li::marker {
+  color: #16865a;
+}
+
+.assistant-product__warning {
+  margin: 8px 0 0;
+  color: #9a5a16;
+  font-size: 12px;
+}
+
+.assistant-product__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.assistant-product__actions .el-button {
+  min-width: 0;
+  flex: 1;
+  margin: 0;
+}
+
+.assistant-comparison {
+  margin-top: 16px;
+  overflow-x: auto;
+  border-top: 1px solid #dce5ef;
+  overscroll-behavior-x: contain;
+}
+
+.assistant-comparison__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 13px 0;
+  color: #6f7d91;
+  font-size: 12px;
+}
+
+.assistant-comparison__header strong {
+  color: #233654;
+  font-size: 13px;
+}
+
+.assistant-comparison__table {
+  min-width: 570px;
+  border-top: 1px solid #e4eaf1;
+}
+
+.assistant-comparison__row {
+  display: grid;
+  grid-template-columns: 130px repeat(2, minmax(180px, 1fr));
+  border-bottom: 1px solid #e4eaf1;
+}
+
+.assistant-comparison__row > * {
+  min-width: 0;
+  padding: 9px 10px;
+  border-left: 1px solid #e4eaf1;
+  color: #334861;
+  font-size: 12px;
+  font-weight: 500;
+  word-break: break-word;
+}
+
+.assistant-comparison__row > *:first-child {
+  border-left: 0;
+  color: #77849a;
+}
+
+.assistant-comparison__row.is-head {
+  background: #f2f6fa;
+}
+
+.assistant-comparison__row.is-head > * {
+  color: #233654;
+  font-weight: 700;
+}
+
+.assistant-comparison__recommendation {
+  margin: 12px 0 0;
+  padding: 11px 12px;
+  border-left: 3px solid #16865a;
+  background: #f0f8f4;
+  color: #2f4d41;
+  line-height: 1.65;
+}
+
+.assistant-compare-tray {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 20px;
+  border-top: 1px solid #dbe5ef;
+  background: #f4f7fa;
+}
+
+.assistant-compare-tray__selection {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.assistant-compare-tray__label {
+  color: #68778e;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.assistant-compare-chip {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 7px 5px 9px;
+  border: 1px solid #ccd8e8;
+  border-radius: 5px;
+  background: #fff;
+  color: #334861;
+  font-size: 12px;
+}
+
+.assistant-compare-chip button {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: #7b8799;
+  cursor: pointer;
+}
+
+:deep(.assistant-product-drawer .el-drawer__body) {
+  padding: 0;
+  background: #fbfcfe;
+}
+
+.assistant-detail__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid #e1e7ef;
+  background: #fff;
+  color: #233654;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.assistant-detail__image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: #eef1f4;
+}
+
+.assistant-detail__identity,
+.assistant-detail__section {
+  padding: 20px;
+  border-bottom: 1px solid #e1e7ef;
+}
+
+.assistant-detail__identity > span {
+  color: #78869b;
+  font-size: 12px;
+}
+
+.assistant-detail__identity h2 {
+  margin: 6px 0 12px;
+  color: #17294f;
+  font-size: 24px;
+  font-weight: 720;
+}
+
+.assistant-detail__commerce strong {
+  color: #b45309;
+  font-size: 26px;
+}
+
+.assistant-detail__commerce span {
+  color: #16865a;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.assistant-detail__identity p {
+  margin: 12px 0 0;
+  color: #53647d;
+  line-height: 1.7;
+}
+
+.assistant-detail__section h3 {
+  margin: 0 0 12px;
+  color: #233654;
+  font-size: 15px;
+}
+
+.assistant-detail__specs {
+  margin: 0;
+}
+
+.assistant-detail__specs div {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 16px;
+  padding: 9px 0;
+  border-bottom: 1px solid #e9edf2;
+}
+
+.assistant-detail__specs div:last-child {
+  border-bottom: 0;
+}
+
+.assistant-detail__specs dt {
+  color: #7a8799;
+}
+
+.assistant-detail__specs dd {
+  margin: 0;
+  color: #2f405f;
+  font-weight: 600;
+  text-align: right;
+  word-break: break-word;
+}
+
+.assistant-detail__reasons {
+  margin-top: 0;
+  font-size: 13px;
+}
+
+.assistant-detail__footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px 20px 24px;
+}
+
 .assistant-ticket {
   display: flex;
   align-items: center;
@@ -622,7 +1568,8 @@ onMounted(loadInitialSession)
 }
 
 .assistant-composer {
-  padding: 18px 20px;
+  flex: 0 0 auto;
+  padding: 14px 20px;
   border-top: 1px solid #e8eef7;
   background: #fff;
 }
@@ -649,24 +1596,113 @@ onMounted(loadInitialSession)
   border-radius: 8px;
 }
 
-@media (max-width: 760px) {
+@media (max-width: 1200px) and (min-width: 961px) {
+  .assistant-products:not(.is-single) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 960px) {
   .assistant-page {
-    grid-template-columns: 1fr;
+    display: block;
+    height: auto;
+    min-height: calc(100dvh - 32px);
+    overflow: visible;
   }
 
   .assistant-history {
-    min-height: auto;
+    position: fixed;
+    z-index: 2101;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(360px, 88vw);
+    height: 100dvh;
+    border-width: 0 1px 0 0;
+    border-radius: 0;
+    visibility: hidden;
+    transform: translateX(-100%);
+    transition: transform 180ms ease, visibility 180ms ease;
   }
 
-  .assistant-panel__header,
+  .assistant-history.is-open {
+    visibility: visible;
+    transform: translateX(0);
+    box-shadow: 18px 0 48px rgba(15, 31, 55, 0.18);
+  }
+
+  .assistant-history-backdrop {
+    position: fixed;
+    z-index: 2100;
+    inset: 0;
+    display: block;
+    padding: 0;
+    border: 0;
+    background: rgba(13, 27, 49, 0.42);
+  }
+
+  .assistant-history__close,
+  .assistant-panel__history {
+    display: inline-flex;
+  }
+
+  .assistant-history__delete {
+    opacity: 1;
+  }
+
+  .assistant-panel {
+    min-height: min(780px, calc(100dvh - 32px));
+  }
+
   .assistant-ticket,
-  .assistant-composer__actions {
+  .assistant-composer__actions,
+  .assistant-compare-tray {
     align-items: stretch;
     flex-direction: column;
   }
 
   .assistant-message__body {
     max-width: calc(100% - 46px);
+  }
+
+  .assistant-products {
+    grid-template-columns: 1fr;
+  }
+
+  .assistant-product {
+    display: block;
+    width: 100%;
+  }
+
+  .assistant-products.is-single .assistant-product {
+    display: block;
+  }
+
+  .assistant-products.is-single .assistant-product__image-button {
+    min-height: 0;
+    aspect-ratio: 4 / 3;
+  }
+
+  .assistant-products.is-single .assistant-product__content {
+    padding: 12px 0 0;
+  }
+
+  .assistant-compare-tray {
+    align-items: stretch;
+  }
+
+  .assistant-requirements,
+  .assistant-messages,
+  .assistant-composer {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant-history,
+  .assistant-product__image {
+    transition: none;
   }
 }
 </style>

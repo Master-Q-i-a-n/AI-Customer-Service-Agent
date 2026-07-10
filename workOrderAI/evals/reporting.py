@@ -144,6 +144,15 @@ def _build_task_summary(task: str, results: list[dict]) -> dict:
         summary["cross_user_leak_rate"] = _average(
             [float(item.get("rule_score", {}).get("cross_user_leak", False)) for item in results]
         )
+    elif task == "presale":
+        fields = (
+            "action_correct", "products_grounded", "comparison_correct",
+            "tool_selection_correct", "forbidden_claims_absent",
+        )
+        summary["metric_rates"] = {
+            field: _average([float(item.get("rule_score", {}).get(field, False)) for item in results])
+            for field in fields
+        }
 
     return summary
 

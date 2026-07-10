@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -257,14 +258,20 @@ public class QueryAIService {
     );
   }
 
-  public JsonNode customerAssistantChat(String sessionId, String ownerUsername, String message, List<Map<String, String>> history) {
+  public JsonNode customerAssistantChat(
+    String sessionId,
+    String ownerUsername,
+    String message,
+    List<Map<String, String>> history,
+    Map<String, Object> presaleState
+  ) {
     try {
-      Map<String, Object> requestBody = Map.of(
-        "session_id", sessionId,
-        "owner_username", ownerUsername,
-        "message", message,
-        "history", history == null ? List.of() : history
-      );
+      Map<String, Object> requestBody = new LinkedHashMap<>();
+      requestBody.put("session_id", sessionId);
+      requestBody.put("owner_username", ownerUsername);
+      requestBody.put("message", message);
+      requestBody.put("history", history == null ? List.of() : history);
+      requestBody.put("presale_state", presaleState == null ? Map.of() : presaleState);
       ResponseEntity<JsonNode> response = callAI("/ai/customer-assistant/chat", requestBody);
       return response.getBody();
     } catch (Exception e) {

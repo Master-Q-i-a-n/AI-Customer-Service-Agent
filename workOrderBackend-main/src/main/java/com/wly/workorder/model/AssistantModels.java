@@ -43,6 +43,7 @@ public final class AssistantModels {
     private String route;
     private String summary;
     private Map<String, Object> pendingTicketDraft;
+    private Map<String, Object> presaleState;
     private String ticketId;
     private List<AssistantMessageView> messages;
     private String createdAt;

@@ -46,6 +46,7 @@ public class DatabaseSeeder implements CommandLineRunner {
     ensureUserMemoryTable();
     ensureAssistantTables();
     ensureCommerceRefundTables();
+    ensureCatalogTables();
 
     Integer userCount = jdbcTemplate.queryForObject("select count(*) from wo_user", Integer.class);
     if (userCount == null || userCount == 0) {
@@ -59,6 +60,7 @@ public class DatabaseSeeder implements CommandLineRunner {
     }
 
     seedCommerceOrders();
+    seedCatalog();
 
     backfillServiceGroups();
   }
@@ -414,6 +416,124 @@ public class DatabaseSeeder implements CommandLineRunner {
     );
   }
 
+  private void ensureCatalogTables() {
+    jdbcTemplate.execute(
+      """
+      create table if not exists ec_product (
+        id varchar(36) primary key,
+        name varchar(128) not null,
+        category varchar(64) not null,
+        summary varchar(500) not null,
+        image_url varchar(500) not null,
+        active tinyint not null default 1,
+        created_at varchar(19) not null,
+        updated_at varchar(19) not null
+      )
+      """
+    );
+    jdbcTemplate.execute(
+      """
+      create table if not exists ec_product_sku (
+        id varchar(36) primary key,
+        product_id varchar(36) not null,
+        sku_name varchar(128) not null,
+        price decimal(12,2) not null,
+        stock int not null default 0,
+        attributes_json text not null,
+        active tinyint not null default 1,
+        updated_at varchar(19) not null,
+        key idx_product_sku_product (product_id)
+      )
+      """
+    );
+  }
+
+  private void seedCatalog() throws Exception {
+    seedCatalogProduct(
+      "product-s1", "sku-s1-white", "净巡 S1 Lite", "云白标准版", "1299.00", 30,
+      "适合小户型的轻量扫拖基础款，操作直接，日常维护简单。", "/products/jingxun-s1-lite.png",
+      Map.ofEntries(
+        Map.entry("home_size_max", 80),
+        Map.entry("floor_types", List.of("木地板", "瓷砖")),
+        Map.entry("pet_friendly", false),
+        Map.entry("suction_pa", 3500),
+        Map.entry("runtime_minutes", 90),
+        Map.entry("navigation", "激光导航"),
+        Map.entry("obstacle_avoidance", "红外避障"),
+        Map.entry("mop_lift", false),
+        Map.entry("anti_tangle", false),
+        Map.entry("station_type", "无"),
+        Map.entry("noise_db", 58)
+      )
+    );
+    seedCatalogProduct(
+      "product-p2", "sku-p2-gray", "净巡 P2 Pet", "雾灰宠物版", "2299.00", 20,
+      "面向养宠家庭的防缠绕机型，兼顾木地板与短毛地毯清洁。", "/products/jingxun-p2-pet.png",
+      Map.ofEntries(
+        Map.entry("home_size_max", 120),
+        Map.entry("floor_types", List.of("木地板", "瓷砖", "短毛地毯")),
+        Map.entry("pet_friendly", true),
+        Map.entry("suction_pa", 5500),
+        Map.entry("runtime_minutes", 150),
+        Map.entry("navigation", "激光导航"),
+        Map.entry("obstacle_avoidance", "3D结构光"),
+        Map.entry("mop_lift", true),
+        Map.entry("anti_tangle", true),
+        Map.entry("station_type", "自动集尘"),
+        Map.entry("noise_db", 56)
+      )
+    );
+    seedCatalogProduct(
+      "product-m3", "sku-m3-white", "净巡 M3 Station", "曜白基站版", "3299.00", 12,
+      "带自动集尘、洗拖布和热风烘干的进阶基站款。", "/products/jingxun-m3-station.png",
+      Map.ofEntries(
+        Map.entry("home_size_max", 150),
+        Map.entry("floor_types", List.of("木地板", "瓷砖", "短毛地毯")),
+        Map.entry("pet_friendly", true),
+        Map.entry("suction_pa", 6500),
+        Map.entry("runtime_minutes", 180),
+        Map.entry("navigation", "激光导航"),
+        Map.entry("obstacle_avoidance", "AI视觉避障"),
+        Map.entry("mop_lift", true),
+        Map.entry("anti_tangle", true),
+        Map.entry("station_type", "集尘洗拖烘干基站"),
+        Map.entry("noise_db", 54)
+      )
+    );
+    seedCatalogProduct(
+      "product-x4", "sku-x4-black", "净巡 X4 Max", "深空黑旗舰版", "4599.00", 8,
+      "覆盖大户型和地毯场景的旗舰全能款，续航和避障能力更强。", "/products/jingxun-x4-max.png",
+      Map.ofEntries(
+        Map.entry("home_size_max", 220),
+        Map.entry("floor_types", List.of("木地板", "瓷砖", "短毛地毯", "地毯")),
+        Map.entry("pet_friendly", true),
+        Map.entry("suction_pa", 8000),
+        Map.entry("runtime_minutes", 220),
+        Map.entry("navigation", "双线激光导航"),
+        Map.entry("obstacle_avoidance", "3D结构光避障"),
+        Map.entry("mop_lift", true),
+        Map.entry("anti_tangle", true),
+        Map.entry("station_type", "全能自清洁基站"),
+        Map.entry("noise_db", 52)
+      )
+    );
+  }
+
+  private void seedCatalogProduct(
+    String productId, String skuId, String name, String skuName, String price, int stock,
+    String summary, String imageUrl, Map<String, Object> attributes
+  ) throws Exception {
+    String now = now();
+    jdbcTemplate.update(
+      "insert ignore into ec_product (id, name, category, summary, image_url, active, created_at, updated_at) values (?, ?, '扫拖机器人', ?, ?, 1, ?, ?)",
+      productId, name, summary, imageUrl, now, now
+    );
+    jdbcTemplate.update(
+      "insert ignore into ec_product_sku (id, product_id, sku_name, price, stock, attributes_json, active, updated_at) values (?, ?, ?, ?, ?, ?, 1, ?)",
+      skuId, productId, skuName, price, stock, objectMapper.writeValueAsString(attributes), now
+    );
+  }
+
   private void seedCommerceOrders() {
     String now = now();
     String recentDelivery = LocalDateTime.now().minusDays(1).format(FMT);
@@ -556,12 +676,22 @@ public class DatabaseSeeder implements CommandLineRunner {
         route varchar(64) not null default '',
         summary text not null,
         pending_ticket_draft_json text not null,
+        presale_state_json text not null,
         ticket_id varchar(36) not null default '',
+        deleted tinyint not null default 0,
+        deleted_at varchar(19) not null default '',
         created_at varchar(19) not null,
         updated_at varchar(19) not null,
         key idx_assistant_session_owner (owner_username, updated_at)
       )
       """
+    );
+    // 兼容不允许 TEXT 默认值的 MySQL 版本：先加列，再为已有会话回填空状态。
+    ensureColumn("wo_assistant_session", "presale_state_json", "text");
+    ensureColumn("wo_assistant_session", "deleted", "tinyint not null default 0");
+    ensureColumn("wo_assistant_session", "deleted_at", "varchar(19) not null default ''");
+    jdbcTemplate.update(
+      "update wo_assistant_session set presale_state_json='{}' where presale_state_json is null or presale_state_json=''"
     );
     jdbcTemplate.execute(
       """

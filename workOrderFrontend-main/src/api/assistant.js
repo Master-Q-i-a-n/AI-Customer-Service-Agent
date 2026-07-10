@@ -6,6 +6,14 @@ export const createAssistantSession = () =>
     method: 'post'
   })
 
+// The first user message and its conversation are persisted together.
+export const startAssistantConversation = content =>
+  request({
+    url: '/assistant/sessions/messages',
+    method: 'post',
+    data: { content }
+  })
+
 export const listAssistantSessions = () =>
   request({
     url: '/assistant/sessions',
@@ -16,6 +24,12 @@ export const getAssistantSession = id =>
   request({
     url: `/assistant/sessions/${id}`,
     method: 'get'
+  })
+
+export const deleteAssistantSession = id =>
+  request({
+    url: `/assistant/sessions/${id}`,
+    method: 'delete'
   })
 
 export const sendAssistantMessage = (id, content) =>

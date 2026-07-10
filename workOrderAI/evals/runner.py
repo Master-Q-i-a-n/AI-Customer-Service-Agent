@@ -27,6 +27,8 @@ async def run_case(task: str, case: dict, skip_judge: bool = False) -> dict:
         return await _run_knowledge_case(case, skip_judge=skip_judge)
     if task == "refund":
         return await _run_refund_case(case)
+    if task == "presale":
+        return await _run_presale_case(case)
     raise ValueError(f"unsupported eval task: {task}")
 
 
@@ -232,6 +234,50 @@ async def _run_refund_case(case: dict) -> dict:
         "rule_score": rule_score,
         "passed": rule_score["passed"],
         "score": rule_score["score"],
+        "latency_seconds": time.perf_counter() - started_at,
+        "notes": notes,
+    }
+
+
+async def _run_presale_case(case: dict) -> dict:
+    from workOrderAI.app.model.customer_assistant import CustomerAssistantRequest
+    from workOrderAI.app.service.presale_agent_graph import PresaleAgentGraph
+
+    started_at = time.perf_counter()
+    trace_token = start_tool_trace()
+    try:
+        response = await PresaleAgentGraph().run(CustomerAssistantRequest(**case["input"]))
+        tool_trace = get_tool_trace()
+    finally:
+        reset_tool_trace(trace_token)
+
+    actual = response.model_dump(mode="json")
+    expected = case["expected"]
+    actual_skus = [item.get("sku_id", "") for item in actual.get("products", [])]
+    expected_skus = expected.get("product_sku_ids", [])
+    tool_names = [item.get("name", "") for item in tool_trace]
+    serialized = json.dumps(actual, ensure_ascii=False)
+    checks = {
+        "action_correct": actual.get("action") == expected.get("action"),
+        "products_grounded": all(sku in actual_skus for sku in expected_skus),
+        "comparison_correct": bool(actual.get("comparison")) == bool(expected.get("comparison")),
+        "tool_selection_correct": all(name in tool_names for name in case.get("required_tools", [])),
+        "forbidden_claims_absent": not any(
+            claim in serialized for claim in expected.get("forbidden_claims", [])
+        ),
+    }
+    passed = all(checks.values())
+    notes = [name for name, value in checks.items() if not value]
+    return {
+        "id": case["id"],
+        "task": "presale",
+        "input": case["input"],
+        "expected": expected,
+        "actual": actual,
+        "tool_trace": tool_trace,
+        "rule_score": {**checks, "passed": passed},
+        "passed": passed,
+        "score": sum(float(value) for value in checks.values()) / len(checks),
         "latency_seconds": time.perf_counter() - started_at,
         "notes": notes,
     }

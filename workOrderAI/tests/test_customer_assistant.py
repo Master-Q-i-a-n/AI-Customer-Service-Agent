@@ -57,6 +57,17 @@ class CustomerAssistantRouteTests(unittest.TestCase):
         self.assertEqual(graph._classify_route_by_rules("ORD-USER-PAID 我想退款"), "REFUND_AFTER_SALES")
         self.assertEqual(graph._classify_route_by_rules("股票能买吗"), "OUT_OF_SCOPE")
 
+    def test_presale_state_keeps_short_follow_up_in_presale(self):
+        graph = CustomerAssistantGraph.__new__(CustomerAssistantGraph)
+        request = CustomerAssistantRequest(
+            session_id="as-1",
+            owner_username="user",
+            message="有猫，木地板",
+            presale_state={"budget_target": 2500, "home_size_sqm": 90},
+        )
+
+        self.assertTrue(graph._should_continue_presale(request))
+
     def test_refund_ticket_draft_never_promises_amount(self):
         graph = CustomerAssistantGraph.__new__(CustomerAssistantGraph)
 

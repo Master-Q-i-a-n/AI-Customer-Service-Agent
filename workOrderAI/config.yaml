@@ -6,7 +6,7 @@ model:
   reranker_model: qwen3-rerank
 
 dashscope:
-  api_key: "sk-f4298599496243d88f034748153ebaeb"
+  api_key: "sk-ws-H.EMRYYHM.YRmF.MEYCIQCiLrlrOnmLiuo1z9NzuRjISSH14P5XZpvSpsy7xQbddQIhAJP5BdUIKNqeoH6hZhHzEbCWUol4lmfcTVEDwfgil92K"
 
 router:
   prefix: /ai
