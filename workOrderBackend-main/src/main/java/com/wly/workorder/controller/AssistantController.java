@@ -33,7 +33,7 @@ public class AssistantController {
   public ApiResponse<AssistantSessionView> startSessionWithMessage(
     @RequestBody @Valid SendAssistantMessageRequest request
   ) {
-    return ApiResponse.success(assistantService.startSessionWithMessage(request.getContent()));
+    return ApiResponse.success(assistantService.startSessionWithMessage(request.getContent(), request.getImages()));
   }
 
   @GetMapping("/sessions")
@@ -57,7 +57,7 @@ public class AssistantController {
     @PathVariable String id,
     @RequestBody @Valid SendAssistantMessageRequest request
   ) {
-    return ApiResponse.success(assistantService.sendMessage(id, request.getContent()));
+    return ApiResponse.success(assistantService.sendMessage(id, request.getContent(), request.getImages()));
   }
 
   @PostMapping("/sessions/{id}/ticket")

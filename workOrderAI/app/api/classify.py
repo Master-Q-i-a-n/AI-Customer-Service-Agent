@@ -2,11 +2,14 @@
 AI分类 API路由
 提供工单自动分类接口
 """
+import asyncio
+
 from workOrderAI.utils.config import config
 from workOrderAI.utils.logger_handler import logger
 from workOrderAI.app.model.request import ClassifyRequest
 import json
 from workOrderAI.app.service.classify_service import ClassifyService
+from workOrderAI.app.service.vision_evidence_service import VisionEvidenceService
 from workOrderAI.app.model.response import ClassifyResponse
 
 from fastapi import APIRouter, Response
@@ -32,6 +35,25 @@ def classify_work_order(request: ClassifyRequest):
     工单分类接口
     """
     classify_service = ClassifyService()
+    if request.images:
+        evidence = asyncio.run(
+            VisionEvidenceService().analyze(
+                request.images,
+                f"{request.title}\n{request.description}",
+            )
+        )
+        if evidence:
+            evidence_text = "；".join(
+                item
+                for item in [evidence.summary, *evidence.observations, *evidence.visible_text]
+                if item
+            )
+            request = request.model_copy(
+                update={
+                    "description": request.description + "\n【图片证据摘要，仅作辅助】" + evidence_text,
+                    "images": [],
+                }
+            )
     request_id = request.ticket_id
     logger.info(f"分类服务调用，工单ID: {request_id}, update_category={request.update_category}")
     classification = classify_service.get_classification(request)

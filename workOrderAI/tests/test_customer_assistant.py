@@ -1,5 +1,8 @@
 import unittest
 import os
+import base64
+import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
@@ -9,12 +12,15 @@ os.environ.setdefault("DASHSCOPE_API_KEY", "test")
 
 from workOrderAI.agent.agent_context import get_current_username_value, is_tool_trace_active
 from workOrderAI.app.model.customer_assistant import (
+    CustomerAssistantImage,
     CustomerAssistantMessage,
     CustomerAssistantRequest,
     CustomerAssistantResponse,
+    VisionEvidence,
 )
 from workOrderAI.app.service.customer_assistant_graph import CustomerAssistantGraph, FaultConversationAssessment
 from workOrderAI.app.service.customer_assistant_service import CustomerAssistantService
+from workOrderAI.app.service.vision_evidence_service import VisionEvidenceService
 from workOrderAI.main import app
 
 
@@ -314,6 +320,31 @@ class CustomerAssistantApiTests(unittest.TestCase):
         self.assertEqual(response.json()["action"], "CLARIFY")
         self.assertEqual(response.json()["route"], "REFUND_AFTER_SALES")
 
+    def test_customer_assistant_api_accepts_image_only_message(self):
+        response_value = CustomerAssistantResponse(
+            action="CLARIFY",
+            route="AFTER_SALES_FAULT",
+            reply="请补充故障现象。",
+        )
+        with patch("workOrderAI.app.api.customer_assistant.CustomerAssistantService") as service_cls:
+            service_cls.return_value.chat = AsyncMock(return_value=response_value)
+            response = TestClient(app).post(
+                "/ai/customer-assistant/chat",
+                json={
+                    "session_id": "as-vision",
+                    "owner_username": "user",
+                    "message": "",
+                    "images": [{
+                        "name": "fault.png",
+                        "content_type": "image/png",
+                        "content_base64": base64.b64encode(b"image").decode("ascii"),
+                    }],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["route"], "AFTER_SALES_FAULT")
+
 
 class CustomerAssistantServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_service_sets_and_resets_request_context(self):
@@ -337,6 +368,76 @@ class CustomerAssistantServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.action, "ANSWER")
         self.assertEqual(get_current_username_value(), "")
         self.assertFalse(is_tool_trace_active())
+
+    async def test_service_adds_visual_evidence_to_graph_context(self):
+        graph = AsyncMock()
+        graph.run.return_value = CustomerAssistantResponse(
+            action="CREATE_TICKET",
+            route="AFTER_SALES_FAULT",
+            reply="可以生成售后工单。",
+        )
+        vision_service = AsyncMock()
+        vision_service.analyze.return_value = VisionEvidence(
+            image_count=1,
+            summary="设备外壳可见裂纹。",
+            observations=["裂纹位于机身边缘"],
+        )
+        request = CustomerAssistantRequest(
+            session_id="as-vision",
+            owner_username="user",
+            message="机器摔了一下",
+            images=[CustomerAssistantImage(
+                name="fault.png",
+                content_type="image/png",
+                content_base64=base64.b64encode(b"image").decode("ascii"),
+            )],
+        )
+
+        result = await CustomerAssistantService(graph=graph, vision_service=vision_service).chat(request)
+
+        graph_request = graph.run.await_args.args[0]
+        self.assertIn("图片证据摘要", graph_request.message)
+        self.assertIn("设备外壳可见裂纹", graph_request.message)
+        self.assertEqual(graph_request.images, [])
+        self.assertEqual(result.vision_evidence.image_count, 1)
+
+
+class VisionEvidenceServiceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_qwen36_plus_receives_data_url_and_returns_redacted_evidence(self):
+        captured = {}
+
+        def caller(**kwargs):
+            captured.update(kwargs)
+            content = json.dumps({
+                "summary": "外壳裂纹，交易号 TX-SECRET",
+                "observations": ["机身右侧有裂纹"],
+                "visible_text": ["错误码 E21", "支付单号 123456"],
+                "limitations": ["图片未展示机器底部"],
+            }, ensure_ascii=False)
+            return SimpleNamespace(
+                status_code=200,
+                output=SimpleNamespace(choices=[SimpleNamespace(
+                    message=SimpleNamespace(content=[{"text": content}])
+                )]),
+            )
+
+        service = VisionEvidenceService(caller=caller)
+        service.model_name = "qwen3.6-plus"
+        evidence = await service.analyze(
+            [CustomerAssistantImage(
+                name="fault.png",
+                content_type="image/png",
+                content_base64=base64.b64encode(b"image-bytes").decode("ascii"),
+            )],
+            "机器摔了一下",
+        )
+
+        self.assertEqual(captured["model"], "qwen3.6-plus")
+        self.assertTrue(captured["messages"][0]["content"][0]["image"].startswith("data:image/png;base64,"))
+        self.assertEqual(evidence.image_count, 1)
+        self.assertIn("错误码 E21", evidence.visible_text)
+        self.assertNotIn("支付单号 123456", evidence.visible_text)
+        self.assertNotIn("TX-SECRET", evidence.summary)
 
 
 if __name__ == "__main__":

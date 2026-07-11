@@ -119,6 +119,25 @@
               <span>{{ formatMessageTime(message.createdAt) }}</span>
             </div>
             <div class="assistant-message__content">{{ message.content }}</div>
+            <div v-if="messageImages(message).length" class="assistant-message-images">
+              <button
+                v-for="(image, index) in messageImages(message)"
+                :key="image.serverPath || image.url || index"
+                type="button"
+                class="assistant-message-image"
+                :aria-label="`查看图片 ${image.name || index + 1}`"
+                @click="previewImage(image)"
+              >
+                <img :src="image.previewUrl" :alt="image.name || '售后图片'" />
+              </button>
+            </div>
+            <div
+              v-if="message.role === 'assistant' && message.metadata?.vision_evidence?.summary"
+              class="assistant-vision-evidence"
+            >
+              <span>视觉识别</span>
+              <p>{{ message.metadata.vision_evidence.summary }}</p>
+            </div>
             <div v-if="message.metadata?.sources?.length" class="assistant-sources">
               <span class="assistant-sources__label">来源</span>
               <span
@@ -251,6 +270,21 @@
       </div>
 
       <div class="assistant-composer">
+        <div v-if="draftImages.length" class="assistant-composer-images">
+          <div v-for="(image, index) in draftImages" :key="image.uid" class="assistant-composer-image">
+            <button type="button" @click="previewImage(image)">
+              <img :src="image.url" :alt="image.name" />
+            </button>
+            <button
+              type="button"
+              class="assistant-composer-image__remove"
+              :aria-label="`移除图片 ${image.name}`"
+              @click="removeDraftImage(index)"
+            >
+              <el-icon><Close /></el-icon>
+            </button>
+          </div>
+        </div>
         <el-input
           v-model.trim="draftMessage"
           type="textarea"
@@ -262,12 +296,26 @@
           @keydown.ctrl.enter.prevent="sendMessage"
         />
         <div class="assistant-composer__actions">
-          <span class="assistant-composer__hint">Ctrl + Enter 发送</span>
-          <el-button type="primary" :loading="sending" @click="sendMessage">
+          <div class="assistant-composer__tools">
+            <el-button plain :loading="uploadingImages" :disabled="draftImages.length >= 5" @click="openImagePicker">
+              <el-icon><UploadFilled /></el-icon>
+              添加售后图片
+            </el-button>
+            <span class="assistant-composer__hint">最多 5 张，单张不超过 7MB</span>
+          </div>
+          <el-button type="primary" :loading="sending" :disabled="uploadingImages" @click="sendMessage">
             <el-icon><Promotion /></el-icon>
             发送
           </el-button>
         </div>
+        <input
+          ref="imageInputRef"
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif,image/bmp"
+          multiple
+          class="assistant-hidden-input"
+          @change="handleImageSelect"
+        />
       </div>
     </div>
 
@@ -338,6 +386,7 @@ import {
   Promotion,
   Refresh,
   Search,
+  UploadFilled,
   View
 } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
@@ -349,15 +398,20 @@ import {
   sendAssistantMessage,
   startAssistantConversation
 } from '../api/assistant'
+import { uploadFile } from '../api/file'
 import { sessionState } from '../store/session'
+import { normalizeImageList, resolveAssetUrl } from '../utils/ticket'
 
 const router = useRouter()
 const LOCAL_HISTORY_LIMIT = 20
 const initializing = ref(false)
 const sending = ref(false)
+const uploadingImages = ref(false)
 const creatingTicket = ref(false)
 const deletingSessionId = ref('')
 const draftMessage = ref('')
+const draftImages = ref([])
+const imageInputRef = ref(null)
 const historyQuery = ref('')
 const historyOpen = ref(false)
 const session = ref(null)
@@ -461,6 +515,7 @@ async function startNewSession() {
   }
   detailVisible.value = false
   selectedProduct.value = null
+  draftImages.value = []
   historyOpen.value = false
   historyQuery.value = ''
   await scrollToLatest()
@@ -525,27 +580,101 @@ async function selectSession(id) {
 
 async function sendMessage() {
   const content = draftMessage.value.trim()
-  if (!content || sending.value) {
+  if ((!content && !draftImages.value.length) || sending.value || uploadingImages.value) {
     return
   }
-  draftMessage.value = ''
-  await submitMessage(content)
+  const sent = await submitMessage(
+    content || '请分析这些售后图片。',
+    draftImages.value.map(image => ({
+      name: image.name,
+      serverPath: image.serverPath,
+      contentType: image.contentType,
+      size: image.size
+    }))
+  )
+  if (sent) {
+    draftMessage.value = ''
+    draftImages.value = []
+  }
 }
 
-async function submitMessage(content) {
+async function submitMessage(content, images = []) {
   sending.value = true
   try {
     const res = session.value?.id
-      ? await sendAssistantMessage(session.value.id, content)
-      : await startAssistantConversation(content)
+      ? await sendAssistantMessage(session.value.id, content, images)
+      : await startAssistantConversation(content, images)
     session.value = res?.data || session.value
     rememberLocalSession(session.value?.id)
     await loadSessionList()
+    return true
   } catch (error) {
     ElMessage.error(error.message || '消息发送失败')
+    return false
   } finally {
     sending.value = false
     await scrollToLatest()
+  }
+}
+
+function openImagePicker() {
+  imageInputRef.value?.click()
+}
+
+async function handleImageSelect(event) {
+  const files = Array.from(event.target.files || [])
+  event.target.value = ''
+  if (!files.length) return
+
+  const remaining = 5 - draftImages.value.length
+  const selected = files.slice(0, remaining)
+  uploadingImages.value = true
+  try {
+    for (const file of selected) {
+      if (!file.type.startsWith('image/')) {
+        ElMessage.warning(`${file.name} 不是支持的图片格式`)
+        continue
+      }
+      if (file.size > 7 * 1024 * 1024) {
+        ElMessage.warning(`${file.name} 超过 7MB，未上传`)
+        continue
+      }
+      const response = await uploadFile(file, 'image')
+      const uploaded = normalizeImageList([{
+        ...(response?.data || {}),
+        contentType: response?.data?.contentType || file.type,
+        size: response?.data?.size || file.size
+      }])[0]
+      if (uploaded?.serverPath) {
+        draftImages.value.push(uploaded)
+      }
+    }
+    if (files.length > remaining) {
+      ElMessage.warning('每条消息最多添加 5 张图片')
+    }
+  } catch (error) {
+    ElMessage.error(error.message || '图片上传失败')
+  } finally {
+    uploadingImages.value = false
+  }
+}
+
+function removeDraftImage(index) {
+  draftImages.value.splice(index, 1)
+}
+
+function messageImages(message) {
+  const images = Array.isArray(message?.metadata?.images) ? message.metadata.images : []
+  return images.map(image => ({
+    ...image,
+    previewUrl: resolveAssetUrl(image.url || image.serverPath || '')
+  })).filter(image => image.previewUrl)
+}
+
+function previewImage(image) {
+  const url = image?.previewUrl || resolveAssetUrl(image?.url || image?.serverPath || '')
+  if (url) {
+    window.open(url, '_blank', 'noopener,noreferrer')
   }
 }
 
@@ -1123,6 +1252,51 @@ onBeforeUnmount(() => {
   word-break: break-word;
 }
 
+.assistant-message-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.assistant-message-image {
+  width: 96px;
+  height: 96px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #d8e3f2;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.assistant-message-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.assistant-vision-evidence {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-left: 3px solid #4c8be8;
+  border-radius: 4px;
+  background: #f2f7ff;
+}
+
+.assistant-vision-evidence span {
+  color: #356eaf;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.assistant-vision-evidence p {
+  margin: 4px 0 0;
+  color: #425675;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .assistant-sources {
   display: flex;
   flex-wrap: wrap;
@@ -1574,6 +1748,52 @@ onBeforeUnmount(() => {
   background: #fff;
 }
 
+.assistant-composer-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.assistant-composer-image {
+  position: relative;
+  width: 72px;
+  height: 72px;
+}
+
+.assistant-composer-image > button:first-child {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #d8e3f2;
+  border-radius: 8px;
+  background: #f7f9fc;
+  cursor: pointer;
+}
+
+.assistant-composer-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.assistant-composer-image__remove {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #52647d;
+  color: #fff;
+  cursor: pointer;
+  place-items: center;
+}
+
 .assistant-composer__actions {
   display: flex;
   align-items: center;
@@ -1582,9 +1802,20 @@ onBeforeUnmount(() => {
   margin-top: 12px;
 }
 
+.assistant-composer__tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
 .assistant-composer__hint {
   color: #7a879d;
   font-size: 12px;
+}
+
+.assistant-hidden-input {
+  display: none;
 }
 
 :deep(.el-button--primary) {

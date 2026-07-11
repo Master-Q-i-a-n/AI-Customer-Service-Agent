@@ -5,6 +5,8 @@ Pydantic数据模型 - 请求体
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
+from workOrderAI.app.model.customer_assistant import CustomerAssistantImage
+
 
 # ==========================================
 # AI分类接口请求模型
@@ -23,6 +25,7 @@ class ClassifyRequest(BaseModel):
     title: str                                          # 工单标题
     description: str                                    # 工单描述
     replies: List[ReplyMessage] = []                    # 历史回复记录
+    images: List[CustomerAssistantImage] = Field(default_factory=list)
     update_category: bool = True                        # 是否更新分类；后续重算仅更新优先级和情绪
 
 
@@ -38,6 +41,7 @@ class ReplySuggestRequest(BaseModel):
     emotion: Optional[str] = None                # 情感: 正常/情感化
     owner_username: Optional[str] = None
     history: List[ReplyMessage]                  # 对话历史
+    images: List[CustomerAssistantImage] = Field(default_factory=list)
 
 
 class CaseMemoryUpsertRequest(BaseModel):

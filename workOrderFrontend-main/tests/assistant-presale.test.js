@@ -24,12 +24,18 @@ assert.match(assistantSource, /\.assistant-products\.is-single \.assistant-produ
 assert.match(assistantSource, /\.assistant-history__list\s*\{[^}]*overflow-y: auto;/s)
 assert.match(assistantSource, /\.assistant-messages\s*\{[^}]*min-height: 0;[^}]*overflow-y: auto;/s)
 assert.match(assistantSource, /@media \(max-width: 960px\)/)
-assert.match(assistantSource, /startAssistantConversation\(content\)/)
+assert.match(assistantSource, /startAssistantConversation\(content, images\)/)
 assert.match(assistantSource, /deleteSession\(item\)/)
 assert.match(assistantSource, /assistant-history__delete/)
+assert.match(assistantSource, /handleImageSelect/)
+assert.match(assistantSource, /添加售后图片/)
+assert.match(assistantSource, /messageImages\(message\)/)
+assert.match(assistantSource, /vision_evidence/)
+assert.match(assistantSource, /draftImages\.value\.map/)
 assert.doesNotMatch(assistantSource, /createAssistantSession/)
 assert.match(assistantApiSource, /url: '\/assistant\/sessions\/messages'/)
 assert.match(assistantApiSource, /url: `\/assistant\/sessions\/\$\{id\}`[\s\S]*method: 'delete'/)
+assert.match(assistantApiSource, /data: \{ content, images \}/)
 
 for (const file of [
   'jingxun-s1-lite.png',

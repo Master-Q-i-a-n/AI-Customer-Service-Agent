@@ -237,7 +237,7 @@
               <el-icon><UploadFilled /></el-icon>
               {{ uploadingImages ? '上传中...' : '添加图片' }}
             </button>
-            <span class="feedback-tool__hint">支持 jpg、png、gif、webp</span>
+            <span class="feedback-tool__hint">支持 jpg、png、gif、webp，单张不超过 7MB</span>
           </div>
           <div v-if="createForm.images.length" class="feedback-assets__files feedback-assets__files--wrap">
             <span v-for="(image, index) in createForm.images" :key="image.uid" class="feedback-file feedback-file--editable">
@@ -616,6 +616,10 @@ async function handleImageSelect(event) {
       if (!file.type.startsWith('image/')) {
         continue
       }
+      if (file.size > 7 * 1024 * 1024) {
+        ElMessage.warning(`${file.name} 超过 7MB，未上传`)
+        continue
+      }
       const response = await uploadFile(file, 'image')
       const uploaded = response?.data || {}
       const fileUrl = uploaded.imgUrl || uploaded.url || uploaded.fileUrl || ''
@@ -628,7 +632,9 @@ async function handleImageSelect(event) {
         url: fileUrl,
         fileUrl: fileUrl,
         serverPath: uploaded.serverPath || fileUrl,
-        ext: uploaded.ext || getFileExtension(file.name)
+        ext: uploaded.ext || getFileExtension(file.name),
+        contentType: uploaded.contentType || file.type,
+        size: uploaded.size || file.size
       })
     }
     createForm.images.push(...nextItems)

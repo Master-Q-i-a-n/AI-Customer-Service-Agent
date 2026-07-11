@@ -38,6 +38,7 @@ services:
       AI_MYSQL_DATABASE: ${MYSQL_DATABASE:-work_order}
       AI_FASTAPI_HOST: 0.0.0.0
       AI_FASTAPI_PORT: 8003
+      AI_VISION_MODEL: ${AI_VISION_MODEL:-qwen3.6-plus}
       AI_VECTOR_MILVUS_URI: data/milvus_lite.db
     ports:
       - "${AI_HOST_PORT:-8003}:8003"

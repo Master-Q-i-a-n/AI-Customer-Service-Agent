@@ -184,11 +184,14 @@ function normalizeAsset(item = {}, uidPrefix = 'asset') {
   const resolvedUrl = resolveAssetUrl(assetPath)
   return {
     uid: item.uid || createUid(uidPrefix),
+    fileId: item.fileId || '',
     name: item.name || getAssetName(assetPath),
     url: resolvedUrl,
     fileUrl: resolvedUrl,
     serverPath: assetPath,
-    ext: item.ext || getFileExtension(item.name || assetPath)
+    ext: item.ext || getFileExtension(item.name || assetPath),
+    contentType: item.contentType || '',
+    size: Number(item.size || 0)
   }
 }
 

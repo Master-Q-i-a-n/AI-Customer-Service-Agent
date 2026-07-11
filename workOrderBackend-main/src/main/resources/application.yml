@@ -4,6 +4,10 @@ server:
 spring:
   application:
     name: work-order-backend
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
   datasource:
     url: ${WORKORDER_DB_URL:jdbc:mysql://127.0.0.1:3306/work_order?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai}
     username: ${WORKORDER_DB_USERNAME:root}

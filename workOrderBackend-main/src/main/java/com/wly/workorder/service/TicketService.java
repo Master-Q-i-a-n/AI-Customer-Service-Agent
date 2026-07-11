@@ -10,7 +10,13 @@ public interface TicketService {
 
   Feedback createFeedback(CreateFeedbackRequest request);
 
-  Feedback createFeedbackFromAssistant(String title, String description, TicketCategory category, ServiceGroup serviceGroup);
+  Feedback createFeedbackFromAssistant(
+    String title,
+    String description,
+    TicketCategory category,
+    ServiceGroup serviceGroup,
+    java.util.List<String> images
+  );
 
   Feedback replyFeedback(String id, ReplyFeedbackRequest request);
 

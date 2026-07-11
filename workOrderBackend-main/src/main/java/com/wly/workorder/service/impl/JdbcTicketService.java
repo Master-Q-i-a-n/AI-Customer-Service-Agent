@@ -65,16 +65,30 @@ public class JdbcTicketService implements TicketService {
       TicketCategory.UNKNOWN,
       ServiceGroup.PRODUCT_CONSULTING
     );
-    queryAIService.classifyTicketAsync(feedback.getId(), request.getTitle(), request.getDescription(), List.of(), true);
+    queryAIService.classifyTicketAsync(
+      feedback.getId(),
+      request.getTitle(),
+      request.getDescription(),
+      List.of(),
+      request.getImages(),
+      true
+    );
     return feedback;
   }
 
   @Override
   @Transactional
-  public Feedback createFeedbackFromAssistant(String title, String description, TicketCategory category, ServiceGroup serviceGroup) {
+  public Feedback createFeedbackFromAssistant(
+    String title,
+    String description,
+    TicketCategory category,
+    ServiceGroup serviceGroup,
+    List<String> images
+  ) {
     CreateFeedbackRequest request = new CreateFeedbackRequest();
     request.setTitle(title);
     request.setDescription(description);
+    request.setImages(images == null ? List.of() : images);
     return createFeedbackInternal(
       request,
       category == null ? TicketCategory.其他 : category,
@@ -147,6 +161,7 @@ public class JdbcTicketService implements TicketService {
         updatedWorkOrder.getTitle(),
         updatedWorkOrder.getDescription(),
         toReplyMessages(updatedWorkOrder.getReplies()),
+        updatedWorkOrder.getImages(),
         false
       );
     }
@@ -348,6 +363,7 @@ public class JdbcTicketService implements TicketService {
       workOrder.getTitle(),
       workOrder.getDescription(),
       toReplyMessages(workOrder.getReplies()),
+      workOrder.getImages(),
       false
     );
     return result == null ? null : queryWorkOrderById(id);

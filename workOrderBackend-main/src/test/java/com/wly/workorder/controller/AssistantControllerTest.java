@@ -49,7 +49,7 @@ class AssistantControllerTest {
   void user_can_chat_and_confirm_ticket_from_ai_draft() throws Exception {
     String token = login("user", "user123");
     ObjectNode ai = assistantCreateTicketResponse();
-    when(queryAIService.customerAssistantChat(anyString(), eq("user"), anyString(), anyList(), anyMap())).thenReturn(ai);
+    when(queryAIService.customerAssistantChat(anyString(), eq("user"), anyString(), anyList(), anyMap(), anyList())).thenReturn(ai);
 
     String sessionId = createSession(token);
 
@@ -84,6 +84,64 @@ class AssistantControllerTest {
         ticketId
       )
     );
+  }
+
+  @Test
+  void user_image_is_persisted_and_transferred_to_confirmed_ticket() throws Exception {
+    String token = login("user", "user123");
+    ObjectNode ai = objectMapper.createObjectNode();
+    ai.put("action", "CREATE_TICKET");
+    ai.put("route", "AFTER_SALES_FAULT");
+    ai.put("reply", "图片显示设备外壳存在裂纹，可以生成售后工单。");
+    ai.putArray("sources");
+    ObjectNode evidence = ai.putObject("vision_evidence");
+    evidence.put("image_count", 1);
+    evidence.put("summary", "设备外壳边缘可见裂纹。");
+    evidence.putArray("observations").add("外壳边缘有连续裂纹");
+    evidence.putArray("visible_text");
+    evidence.putArray("limitations");
+    ObjectNode draft = ai.putObject("ticket_draft");
+    draft.put("title", "售后故障：设备外壳裂纹");
+    draft.put("description", "用户上传图片，视觉证据显示设备外壳边缘存在裂纹。");
+    draft.put("category", "技术故障");
+    draft.put("service_group", "TECH_SUPPORT");
+    when(queryAIService.customerAssistantChat(anyString(), eq("user"), anyString(), anyList(), anyMap(), anyList())).thenReturn(ai);
+
+    String sessionId = createSession(token);
+    MvcResult messageResult = mockMvc.perform(post("/api/assistant/sessions/" + sessionId + "/messages")
+        .header("Authorization", token)
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("""
+          {
+            "content":"机器摔了一下，请看图片",
+            "images":[{
+              "name":"broken.png",
+              "serverPath":"image/2026/07/10/broken.png",
+              "contentType":"image/png",
+              "size":1024
+            }]
+          }
+          """))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.data.messages[0].metadata.images[0].serverPath").value("image/2026/07/10/broken.png"))
+      .andExpect(jsonPath("$.data.messages[0].metadata.vision_evidence.summary").value("设备外壳边缘可见裂纹。"))
+      .andExpect(jsonPath("$.data.messages[1].metadata.vision_evidence.image_count").value(1))
+      .andReturn();
+
+    Assertions.assertEquals(2, objectMapper.readTree(messageResult.getResponse().getContentAsString())
+      .path("data").path("messages").size());
+
+    MvcResult ticketResult = mockMvc.perform(post("/api/assistant/sessions/" + sessionId + "/ticket")
+        .header("Authorization", token))
+      .andExpect(status().isOk())
+      .andReturn();
+    String ticketId = objectMapper.readTree(ticketResult.getResponse().getContentAsString())
+      .path("data").path("ticketId").asText();
+    Assertions.assertTrue(jdbcTemplate.queryForObject(
+      "select images_json from wo_feedback where id=?",
+      String.class,
+      ticketId
+    ).contains("image/2026/07/10/broken.png"));
   }
 
   @Test
@@ -158,7 +216,7 @@ class AssistantControllerTest {
     state.put("home_size_sqm", 90);
     state.putArray("candidate_sku_ids").add("sku-p2-gray");
     state.putArray("candidate_names").add("净巡 P2 Pet");
-    when(queryAIService.customerAssistantChat(anyString(), eq("user"), anyString(), anyList(), anyMap())).thenReturn(ai);
+    when(queryAIService.customerAssistantChat(anyString(), eq("user"), anyString(), anyList(), anyMap(), anyList())).thenReturn(ai);
 
     String sessionId = createSession(token);
     mockMvc.perform(post("/api/assistant/sessions/" + sessionId + "/messages")
@@ -191,7 +249,7 @@ class AssistantControllerTest {
   @Test
   void ai_failure_returns_ticket_draft_without_auto_creating_ticket() throws Exception {
     String token = login("user", "user123");
-    when(queryAIService.customerAssistantChat(anyString(), eq("user"), anyString(), anyList(), anyMap())).thenReturn(null);
+    when(queryAIService.customerAssistantChat(anyString(), eq("user"), anyString(), anyList(), anyMap(), anyList())).thenReturn(null);
 
     String sessionId = createSession(token);
 

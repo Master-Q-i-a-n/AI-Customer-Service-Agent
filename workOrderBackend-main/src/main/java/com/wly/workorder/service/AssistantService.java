@@ -9,6 +9,7 @@ import com.wly.workorder.auth.AuthException;
 import com.wly.workorder.auth.AuthRole;
 import com.wly.workorder.auth.AuthSession;
 import com.wly.workorder.common.ApiResponse;
+import com.wly.workorder.model.AssistantModels.AssistantImageRequest;
 import com.wly.workorder.model.AssistantModels.AssistantMessageView;
 import com.wly.workorder.model.AssistantModels.AssistantSessionView;
 import com.wly.workorder.model.TicketModels.Feedback;
@@ -24,6 +25,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +38,10 @@ public class AssistantService {
     "GENERAL_CHAT", "PRESALE", "KNOWLEDGE_QA", "ORDER_QUERY", "USER_RECORD",
     "AFTER_SALES_FAULT", "REFUND_AFTER_SALES", "CLARIFY", "OUT_OF_SCOPE"
   );
+  private static final Set<String> VALID_IMAGE_EXTENSIONS = Set.of("png", "jpg", "jpeg", "gif", "webp", "bmp");
+  private static final int MAX_ASSISTANT_IMAGES = 5;
+  // Base64 会放大体积，限制原图 7MB，确保发给视觉模型的 Data URL 不超过 10MB。
+  private static final long MAX_ASSISTANT_IMAGE_BYTES = 7L * 1024 * 1024;
 
   private final JdbcTemplate jdbcTemplate;
   private final ObjectMapper objectMapper;
@@ -61,9 +67,9 @@ public class AssistantService {
   }
 
   @Transactional
-  public AssistantSessionView startSessionWithMessage(String content) {
+  public AssistantSessionView startSessionWithMessage(String content, List<AssistantImageRequest> images) {
     AuthSession session = requireUser();
-    return sendMessage(createSessionRecord(session), content);
+    return sendMessage(createSessionRecord(session), content, images);
   }
 
   private String createSessionRecord(AuthSession session) {
@@ -126,20 +132,26 @@ public class AssistantService {
   }
 
   @Transactional
-  public AssistantSessionView sendMessage(String sessionId, String content) {
+  public AssistantSessionView sendMessage(String sessionId, String content, List<AssistantImageRequest> images) {
     AuthSession session = requireUser();
     AssistantSessionView before = loadOwnedSession(session.getUsername(), sessionId);
     String cleanContent = String.valueOf(content == null ? "" : content).trim();
+    List<AssistantImageRequest> safeImages = sanitizeImages(images);
+    if (cleanContent.isEmpty() && safeImages.isEmpty()) {
+      throw new IllegalArgumentException("content or images is required");
+    }
     if (cleanContent.isEmpty()) {
-      throw new IllegalArgumentException("content is required");
+      cleanContent = "请分析这些售后图片。";
     }
 
-    insertMessage(sessionId, "user", cleanContent, "", Map.of());
+    Map<String, Object> userMetadata = new LinkedHashMap<>();
+    userMetadata.put("images", safeImages.stream().map(this::toImageMetadata).toList());
+    String userMessageId = insertMessage(sessionId, "user", cleanContent, "", userMetadata);
 
     List<Map<String, String>> history = before.getMessages().stream()
       .map(item -> Map.of(
         "role", item.getRole(),
-        "content", item.getContent()
+        "content", contentWithVisionEvidence(item)
       ))
       .toList();
     JsonNode aiResponse = queryAIService.customerAssistantChat(
@@ -147,7 +159,8 @@ public class AssistantService {
       session.getUsername(),
       cleanContent,
       history,
-      before.getPresaleState()
+      before.getPresaleState(),
+      safeImages
     );
     if (aiResponse == null || aiResponse.isMissingNode()) {
       aiResponse = fallbackAiResponse(cleanContent);
@@ -160,6 +173,11 @@ public class AssistantService {
       reply = "您好，AI 客服暂时无法生成有效回复。您可以补充问题细节，或确认是否转人工处理。";
     }
     Map<String, Object> metadata = objectMapper.convertValue(aiResponse, new TypeReference<Map<String, Object>>() { });
+    Map<String, Object> visionEvidence = readMap(writeJson(metadata.get("vision_evidence")));
+    if (!visionEvidence.isEmpty()) {
+      userMetadata.put("vision_evidence", visionEvidence);
+      updateMessageMetadata(userMessageId, userMetadata);
+    }
     Map<String, Object> ticketDraft = readMap(writeJson(metadata.get("ticket_draft")));
     String pendingDraftJson = ticketDraft.isEmpty() ? "{}" : writeJson(ticketDraft);
     Map<String, Object> returnedPresaleState = readMap(writeJson(metadata.get("presale_state")));
@@ -196,7 +214,8 @@ public class AssistantService {
       requiredDraftText(draft, "title"),
       requiredDraftText(draft, "description"),
       parseCategory(String.valueOf(draft.get("category"))),
-      parseServiceGroup(String.valueOf(draft.get("service_group")))
+      parseServiceGroup(String.valueOf(draft.get("service_group"))),
+      collectSessionImages(current)
     );
     jdbcTemplate.update(
       "update wo_assistant_session set status=?, ticket_id=?, pending_ticket_draft_json=?, updated_at=? where id=? and owner_username=? and deleted=0",
@@ -264,19 +283,29 @@ public class AssistantService {
     );
   }
 
-  private void insertMessage(String sessionId, String role, String content, String action, Map<String, Object> metadata) {
+  private String insertMessage(String sessionId, String role, String content, String action, Map<String, Object> metadata) {
+    String messageId = nextMessageId();
     jdbcTemplate.update(
       """
       insert into wo_assistant_message (id, session_id, role, content, action, metadata_json, created_at)
       values (?, ?, ?, ?, ?, ?, ?)
       """,
-      nextMessageId(),
+      messageId,
       sessionId,
       role,
       content,
       action == null ? "" : action,
       writeJson(metadata == null ? Map.of() : metadata),
       now()
+    );
+    return messageId;
+  }
+
+  private void updateMessageMetadata(String messageId, Map<String, Object> metadata) {
+    jdbcTemplate.update(
+      "update wo_assistant_message set metadata_json=? where id=?",
+      writeJson(metadata == null ? Map.of() : metadata),
+      messageId
     );
   }
 
@@ -290,6 +319,67 @@ public class AssistantService {
 
   private String nextMessageId() {
     return "am-" + System.currentTimeMillis() + "-" + UUID.randomUUID().toString().substring(0, 6);
+  }
+
+  private List<AssistantImageRequest> sanitizeImages(List<AssistantImageRequest> images) {
+    if (images == null || images.isEmpty()) {
+      return List.of();
+    }
+    if (images.size() > MAX_ASSISTANT_IMAGES) {
+      throw new IllegalArgumentException("at most five images are allowed");
+    }
+    List<AssistantImageRequest> result = new ArrayList<>();
+    for (AssistantImageRequest image : images) {
+      String serverPath = image == null ? "" : String.valueOf(image.getServerPath()).replace('\\', '/').trim();
+      String name = image == null ? "" : String.valueOf(image.getName()).trim();
+      int extensionIndex = serverPath.lastIndexOf('.');
+      String extension = extensionIndex < 0 ? "" : serverPath.substring(extensionIndex + 1).toLowerCase(Locale.ROOT);
+      if (!serverPath.startsWith("image/") || serverPath.contains("..") || !VALID_IMAGE_EXTENSIONS.contains(extension)) {
+        throw new IllegalArgumentException("invalid assistant image path");
+      }
+      if (image.getSize() < 0 || image.getSize() > MAX_ASSISTANT_IMAGE_BYTES) {
+        throw new IllegalArgumentException("assistant image is too large");
+      }
+      String contentType = String.valueOf(image.getContentType() == null ? "" : image.getContentType()).trim().toLowerCase(Locale.ROOT);
+      if (!contentType.isEmpty() && !contentType.startsWith("image/")) {
+        throw new IllegalArgumentException("invalid assistant image content type");
+      }
+      result.add(new AssistantImageRequest(name, serverPath, contentType, image.getSize()));
+    }
+    return result;
+  }
+
+  private Map<String, Object> toImageMetadata(AssistantImageRequest image) {
+    Map<String, Object> metadata = new LinkedHashMap<>();
+    metadata.put("name", image.getName());
+    metadata.put("serverPath", image.getServerPath());
+    metadata.put("url", "/api/files/" + image.getServerPath());
+    metadata.put("contentType", image.getContentType());
+    metadata.put("size", image.getSize());
+    return metadata;
+  }
+
+  private String contentWithVisionEvidence(AssistantMessageView message) {
+    String content = String.valueOf(message.getContent() == null ? "" : message.getContent());
+    Map<String, Object> evidence = readMap(writeJson(message.getMetadata().get("vision_evidence")));
+    String summary = String.valueOf(evidence.getOrDefault("summary", "")).trim();
+    return summary.isEmpty() ? content : content + "\n【此前图片证据摘要】" + summary;
+  }
+
+  private List<String> collectSessionImages(AssistantSessionView session) {
+    return session.getMessages().stream()
+      .filter(message -> "user".equalsIgnoreCase(message.getRole()))
+      .flatMap(message -> {
+        Object value = message.getMetadata().get("images");
+        return value instanceof List<?> list ? list.stream() : java.util.stream.Stream.empty();
+      })
+      .filter(Map.class::isInstance)
+      .map(Map.class::cast)
+      .map(image -> String.valueOf(image.getOrDefault("serverPath", "")).trim())
+      .filter(path -> path.startsWith("image/") && !path.contains(".."))
+      .distinct()
+      .limit(MAX_ASSISTANT_IMAGES)
+      .collect(Collectors.toList());
   }
 
   private ObjectNode fallbackAiResponse(String userMessage) {

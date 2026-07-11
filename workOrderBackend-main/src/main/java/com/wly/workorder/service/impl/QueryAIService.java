@@ -3,6 +3,7 @@ package com.wly.workorder.service.impl;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wly.workorder.config.WorkOrderAIProperties;
+import com.wly.workorder.model.AssistantModels.AssistantImageRequest;
 import com.wly.workorder.model.KnowledgeModels.KnowledgeAnswer;
 import com.wly.workorder.model.KnowledgeModels.KnowledgeDocument;
 import com.wly.workorder.model.KnowledgeModels.KnowledgeDocumentList;
@@ -10,7 +11,10 @@ import com.wly.workorder.model.KnowledgeModels.SourceDocument;
 import com.wly.workorder.model.TicketModels.WorkOrder;
 import com.wly.workorder.model.TicketModels.FeedbackReply;
 import com.wly.workorder.model.TicketModels.HistoricalCaseSource;
+import com.wly.workorder.service.FileStorageService;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
@@ -41,21 +45,37 @@ public class QueryAIService {
   private final RestTemplate restTemplate;
   private final Executor asyncExecutor;
   private final ObjectMapper objectMapper;
+  private final FileStorageService fileStorageService;
 
-  public QueryAIService(WorkOrderAIProperties properties, ObjectMapper objectMapper) {
+  public QueryAIService(
+    WorkOrderAIProperties properties,
+    ObjectMapper objectMapper,
+    FileStorageService fileStorageService
+  ) {
     this.properties = properties;
     this.restTemplate = new RestTemplate();
     this.asyncExecutor = Executors.newFixedThreadPool(5);
     this.objectMapper = objectMapper;
+    this.fileStorageService = fileStorageService;
   }
 
-  public CompletableFuture<JsonNode> classifyTicketAsync(String ticketId, String title, String description, List<Map<String, String>> replies, boolean updateCategory) {
+  public CompletableFuture<JsonNode> classifyTicketAsync(
+    String ticketId,
+    String title,
+    String description,
+    List<Map<String, String>> replies,
+    List<String> images,
+    boolean updateCategory
+  ) {
     if (!properties.getAiClassification().isEnabled() || (updateCategory && !properties.getAiClassification().isTriggerOnCreate())) {
       return CompletableFuture.completedFuture(null);
     }
     return CompletableFuture.supplyAsync(() -> {
       try {
-        ResponseEntity<JsonNode> response = callAI("/ai/classify", buildClassificationRequest(ticketId, title, description, replies, updateCategory));
+        ResponseEntity<JsonNode> response = callAI(
+          "/ai/classify",
+          buildClassificationRequest(ticketId, title, description, replies, images, updateCategory)
+        );
         log.info("AI分类成功, ticketId: {}", ticketId);
         return response.getBody();
       } catch (Exception e) {
@@ -65,12 +85,22 @@ public class QueryAIService {
     }, asyncExecutor);
   }
 
-  public JsonNode classifyTicket(String ticketId, String title, String description, List<Map<String, String>> replies, boolean updateCategory) {
+  public JsonNode classifyTicket(
+    String ticketId,
+    String title,
+    String description,
+    List<Map<String, String>> replies,
+    List<String> images,
+    boolean updateCategory
+  ) {
     if (!properties.getAiClassification().isEnabled()) {
       return null;
     }
     try {
-      ResponseEntity<JsonNode> response = callAI("/ai/classify", buildClassificationRequest(ticketId, title, description, replies, updateCategory));
+      ResponseEntity<JsonNode> response = callAI(
+        "/ai/classify",
+        buildClassificationRequest(ticketId, title, description, replies, images, updateCategory)
+      );
       log.info("AI分类成功, ticketId: {}", ticketId);
       return response.getBody();
     } catch (Exception e) {
@@ -91,7 +121,8 @@ public class QueryAIService {
         "category", workorder.getCategory(),
         "emotion", workorder.getEmotion(),
         "owner_username", workorder.getOwnerUsername(),
-        "history", toReplyMessages(workorder.getReplies())
+        "history", toReplyMessages(workorder.getReplies()),
+        "images", prepareStoredImages(workorder.getImages())
       );
       ResponseEntity<JsonNode> response = callAI("/ai/suggestion", requestBody);
       log.info("AI回复建议生成成功, ticketId: {}", workorder.getId());
@@ -248,14 +279,22 @@ public class QueryAIService {
     return restTemplate.exchange(url, HttpMethod.DELETE, HttpEntity.EMPTY, JsonNode.class);
   }
 
-  private Map<String, Object> buildClassificationRequest(String ticketId, String title, String description, List<Map<String, String>> replies, boolean updateCategory) {
-    return Map.of(
-      "ticket_id", ticketId,
-      "title", title,
-      "description", description,
-      "replies", replies,
-      "update_category", updateCategory
-    );
+  private Map<String, Object> buildClassificationRequest(
+    String ticketId,
+    String title,
+    String description,
+    List<Map<String, String>> replies,
+    List<String> images,
+    boolean updateCategory
+  ) {
+    Map<String, Object> request = new LinkedHashMap<>();
+    request.put("ticket_id", ticketId);
+    request.put("title", title);
+    request.put("description", description);
+    request.put("replies", replies);
+    request.put("images", prepareStoredImages(images));
+    request.put("update_category", updateCategory);
+    return request;
   }
 
   public JsonNode customerAssistantChat(
@@ -263,7 +302,8 @@ public class QueryAIService {
     String ownerUsername,
     String message,
     List<Map<String, String>> history,
-    Map<String, Object> presaleState
+    Map<String, Object> presaleState,
+    List<AssistantImageRequest> images
   ) {
     try {
       Map<String, Object> requestBody = new LinkedHashMap<>();
@@ -272,12 +312,75 @@ public class QueryAIService {
       requestBody.put("message", message);
       requestBody.put("history", history == null ? List.of() : history);
       requestBody.put("presale_state", presaleState == null ? Map.of() : presaleState);
+      requestBody.put("images", prepareAssistantImages(images));
       ResponseEntity<JsonNode> response = callAI("/ai/customer-assistant/chat", requestBody);
       return response.getBody();
     } catch (Exception e) {
       log.error("用户侧AI客服调用失败, sessionId: {}", sessionId, e);
       return null;
     }
+  }
+
+  private List<Map<String, Object>> prepareAssistantImages(List<AssistantImageRequest> images) {
+    if (images == null || images.isEmpty()) {
+      return List.of();
+    }
+    List<Map<String, Object>> result = new ArrayList<>();
+    for (AssistantImageRequest image : images.stream().limit(5).toList()) {
+      try {
+        String serverPath = String.valueOf(image.getServerPath()).replace('\\', '/').trim();
+        if (!serverPath.startsWith("image/") || serverPath.contains("..")) {
+          throw new IllegalArgumentException("invalid image path");
+        }
+        Path path = fileStorageService.resolve(serverPath);
+        if (!Files.isRegularFile(path)) {
+          throw new IOException("image not found");
+        }
+        byte[] content = Files.readAllBytes(path);
+        if (content.length == 0 || content.length > 7L * 1024 * 1024) {
+          throw new IllegalArgumentException("image size is invalid");
+        }
+        String contentType = normalizeImageContentType(image.getContentType(), serverPath);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("name", image.getName());
+        payload.put("content_type", contentType);
+        payload.put("content_base64", Base64.getEncoder().encodeToString(content));
+        result.add(payload);
+      } catch (Exception ex) {
+        // 单张图片异常不阻断整轮文本客服，视觉服务会对剩余有效图片继续分析。
+        log.warn("跳过无效的AI客服图片, name: {}, reason: {}", image.getName(), ex.getMessage());
+      }
+    }
+    return result;
+  }
+
+  private List<Map<String, Object>> prepareStoredImages(List<String> imagePaths) {
+    if (imagePaths == null || imagePaths.isEmpty()) {
+      return List.of();
+    }
+    List<AssistantImageRequest> images = new ArrayList<>();
+    for (String value : imagePaths.stream().limit(5).toList()) {
+      String serverPath = String.valueOf(value == null ? "" : value).replace('\\', '/').trim();
+      if (serverPath.startsWith("/api/files/")) {
+        serverPath = serverPath.substring("/api/files/".length());
+      }
+      String name = serverPath.contains("/") ? serverPath.substring(serverPath.lastIndexOf('/') + 1) : serverPath;
+      images.add(new AssistantImageRequest(name, serverPath, "", 0));
+    }
+    return prepareAssistantImages(images);
+  }
+
+  private String normalizeImageContentType(String contentType, String serverPath) {
+    String normalized = String.valueOf(contentType == null ? "" : contentType).trim().toLowerCase();
+    if (normalized.startsWith("image/")) {
+      return normalized;
+    }
+    String lowerPath = serverPath.toLowerCase();
+    if (lowerPath.endsWith(".png")) return "image/png";
+    if (lowerPath.endsWith(".webp")) return "image/webp";
+    if (lowerPath.endsWith(".gif")) return "image/gif";
+    if (lowerPath.endsWith(".bmp")) return "image/bmp";
+    return "image/jpeg";
   }
 
   public JsonNode generateRefundPlan(WorkOrder workorder) {

@@ -1,6 +1,8 @@
 package com.wly.workorder.model;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import java.util.List;
 import java.util.Map;
 import lombok.AllArgsConstructor;
@@ -16,8 +18,22 @@ public final class AssistantModels {
   @NoArgsConstructor
   @AllArgsConstructor
   public static class SendAssistantMessageRequest {
-    @NotBlank
     private String content;
+    @Valid
+    @Size(max = 5)
+    private List<AssistantImageRequest> images;
+  }
+
+  @Data
+  @NoArgsConstructor
+  @AllArgsConstructor
+  public static class AssistantImageRequest {
+    @NotBlank
+    private String name;
+    @NotBlank
+    private String serverPath;
+    private String contentType;
+    private long size;
   }
 
   @Data

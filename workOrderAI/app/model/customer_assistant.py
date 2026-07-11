@@ -25,6 +25,20 @@ class CustomerAssistantMessage(BaseModel):
     content: str
 
 
+class CustomerAssistantImage(BaseModel):
+    name: str
+    content_type: str
+    content_base64: str
+
+
+class VisionEvidence(BaseModel):
+    image_count: int = 0
+    summary: str = ""
+    observations: list[str] = Field(default_factory=list)
+    visible_text: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+
+
 class CustomerAssistantTicketDraft(BaseModel):
     title: str
     description: str
@@ -35,9 +49,10 @@ class CustomerAssistantTicketDraft(BaseModel):
 class CustomerAssistantRequest(BaseModel):
     session_id: str
     owner_username: str
-    message: str
+    message: str = ""
     history: list[CustomerAssistantMessage] = Field(default_factory=list)
     presale_state: PresaleState = Field(default_factory=PresaleState)
+    images: list[CustomerAssistantImage] = Field(default_factory=list)
 
 
 class CustomerAssistantResponse(BaseModel):
@@ -49,3 +64,4 @@ class CustomerAssistantResponse(BaseModel):
     products: list[PresaleProduct] = Field(default_factory=list)
     comparison: PresaleComparison | None = None
     presale_state: PresaleState | None = None
+    vision_evidence: VisionEvidence | None = None

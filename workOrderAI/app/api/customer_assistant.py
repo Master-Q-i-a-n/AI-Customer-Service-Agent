@@ -10,6 +10,7 @@ api = APIRouter(prefix=config["router"]["prefix"], tags=["customer_assistant"])
 
 @api.post("/customer-assistant/chat", response_model=CustomerAssistantResponse)
 async def customer_assistant_chat(request: CustomerAssistantRequest):
-    if not request.message.strip():
-        raise HTTPException(status_code=400, detail="message is empty")
-    return await CustomerAssistantService().chat(request)
+    try:
+        return await CustomerAssistantService().chat(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

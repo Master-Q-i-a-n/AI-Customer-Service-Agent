@@ -33,6 +33,7 @@ def get_config():
     _set_if_present(config, ["FastAPI", "host"], "AI_FASTAPI_HOST")
     _set_if_present(config, ["FastAPI", "port"], "AI_FASTAPI_PORT", int)
     _set_if_present(config, ["FastAPI", "log_level"], "AI_FASTAPI_LOG_LEVEL")
+    _set_if_present(config, ["model", "vision_model"], "AI_VISION_MODEL")
     _set_if_present(config, ["vector_store", "milvus_uri"], "AI_VECTOR_MILVUS_URI")
     return config
 
